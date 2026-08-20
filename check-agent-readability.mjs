@@ -126,16 +126,33 @@ const MANIFEST_NAMES = new Set([
   "settings.gradle.kts",
 ]);
 
-const ROOT_SECTIONS = {
-  Purpose: ["purpose", "goal"],
-  Architecture: ["architecture", "system design"],
-  "Entry Points": ["entry points", "entry point"],
+const ROOT_AGENT_SECTIONS = {
+  "Repository Documents": ["repository documents", "navigation", "read first"],
   Development: ["development", "local development"],
   Testing: ["testing", "tests"],
   Conventions: ["conventions", "coding conventions"],
+  "Agent Workflow": ["agent workflow", "workflow"],
+  "Documentation Updates": [
+    "documentation updates",
+    "documentation update triggers",
+  ],
 };
 
-const DIRECTORY_SECTIONS = {
+const ARCHITECTURE_SECTIONS = {
+  Purpose: ["purpose", "goal"],
+  "System Context": ["system context", "context"],
+  Components: ["components", "component model"],
+  "Dependency Rules": ["dependency rules", "dependency direction"],
+  "Data Flow": ["data flow", "data flows"],
+  "Entry Points": ["entry points", "entry point"],
+  "Cross-Cutting Constraints": [
+    "cross-cutting constraints",
+    "cross cutting constraints",
+    "system constraints",
+  ],
+};
+
+const MODULE_SECTIONS = {
   Purpose: ["purpose", "goal"],
   Responsibilities: ["responsibilities", "responsibility"],
   "Key Files": ["key files", "important files"],
@@ -332,9 +349,9 @@ export function loadConfig(repositoryRoot) {
       exemptions.oversizedFiles,
       "exemptions.oversizedFiles",
     ),
-    directoryGuideExemptions: loadExemptions(
-      exemptions.directoryGuides,
-      "exemptions.directoryGuides",
+    moduleGuideExemptions: loadExemptions(
+      exemptions.moduleGuides,
+      "exemptions.moduleGuides",
     ),
     mapFileExemptions: loadExemptions(
       exemptions.mapFiles,
@@ -601,7 +618,7 @@ function scoreRootGuide(root, findings) {
     return 0;
   }
 
-  const presence = sectionPresence(guide, ROOT_SECTIONS);
+  const presence = sectionPresence(guide, ROOT_AGENT_SECTIONS);
   for (const [section, present] of Object.entries(presence)) {
     if (!present) {
       findings.push(
@@ -615,23 +632,54 @@ function scoreRootGuide(root, findings) {
     }
   }
   const presentCount = Object.values(presence).filter(Boolean).length;
-  return 10 + (20 * presentCount) / Object.keys(ROOT_SECTIONS).length;
+  return 10 + (20 * presentCount) / Object.keys(ROOT_AGENT_SECTIONS).length;
 }
 
-function scoreDirectoryGuides(root, directories, config, findings) {
+function scoreArchitecture(root, findings) {
+  const architecture = path.join(root, "ARCHITECTURE.md");
+  if (!fs.existsSync(architecture) || !fs.statSync(architecture).isFile()) {
+    findings.push(
+      finding(
+        "error",
+        "ARCHITECTURE_MISSING",
+        "ARCHITECTURE.md",
+        "Root ARCHITECTURE.md is required.",
+      ),
+    );
+    return 0;
+  }
+
+  const presence = sectionPresence(architecture, ARCHITECTURE_SECTIONS);
+  for (const [section, present] of Object.entries(presence)) {
+    if (!present) {
+      findings.push(
+        finding(
+          "error",
+          "ARCHITECTURE_SECTION_MISSING",
+          "ARCHITECTURE.md",
+          `Required non-empty section is missing: ${section}.`,
+        ),
+      );
+    }
+  }
+  const presentCount = Object.values(presence).filter(Boolean).length;
+  return 10 + (20 * presentCount) / Object.keys(ARCHITECTURE_SECTIONS).length;
+}
+
+function scoreModuleGuides(root, directories, config, findings) {
   if (directories.length === 0) {
     return 25;
   }
 
   let earned = 0;
   for (const directory of directories) {
-    const exemption = config.directoryGuideExemptions[directory];
+    const exemption = config.moduleGuideExemptions[directory];
     if (exemption) {
       earned += 1;
       findings.push(
         finding(
           "info",
-          "DIRECTORY_GUIDE_EXEMPT",
+          "MODULE_GUIDE_EXEMPT",
           directory,
           `Guide exemption: ${exemption}`,
         ),
@@ -639,30 +687,30 @@ function scoreDirectoryGuides(root, directories, config, findings) {
       continue;
     }
 
-    const guideRelative = `${directory}/AGENTS.md`;
+    const guideRelative = `${directory}/MODULE.md`;
     const guide = absolutePath(root, guideRelative);
     if (!fs.existsSync(guide) || !fs.statSync(guide).isFile()) {
       findings.push(
         finding(
           "error",
-          "DIRECTORY_GUIDE_MISSING",
+          "MODULE_GUIDE_MISSING",
           guideRelative,
-          "Significant directory requires an AGENTS.md.",
+          "Significant directory requires a MODULE.md.",
         ),
       );
       continue;
     }
 
     earned += 0.5;
-    const presence = sectionPresence(guide, DIRECTORY_SECTIONS);
+    const presence = sectionPresence(guide, MODULE_SECTIONS);
     const presentCount = Object.values(presence).filter(Boolean).length;
-    earned += (0.5 * presentCount) / Object.keys(DIRECTORY_SECTIONS).length;
+    earned += (0.5 * presentCount) / Object.keys(MODULE_SECTIONS).length;
     for (const [section, present] of Object.entries(presence)) {
       if (!present) {
         findings.push(
           finding(
             "error",
-            "DIRECTORY_SECTION_MISSING",
+            "MODULE_SECTION_MISSING",
             guideRelative,
             `Required non-empty section is missing: ${section}.`,
           ),
@@ -843,7 +891,7 @@ function validateNavigationEntries(
   }
 
   const modules = data.modules;
-  const exemptDirectories = new Set(Object.keys(config.directoryGuideExemptions));
+  const exemptDirectories = new Set(Object.keys(config.moduleGuideExemptions));
   const requiredModules = new Set(
     [...significantDirectories].filter((item) => !exemptDirectories.has(item)),
   );
@@ -858,10 +906,13 @@ function validateNavigationEntries(
       const location = `${MAP_PATH}#modules[${index}]`;
       const modulePath = isPlainObject(module) ? safeMapPath(module.path) : null;
       const guidePath = isPlainObject(module) ? safeMapPath(module.guide) : null;
+      const expectedGuide =
+        modulePath === null ? null : `${modulePath}/MODULE.md`;
       const valid =
         isPlainObject(module) &&
         isExistingDirectory(root, modulePath) &&
         isExistingFile(root, guidePath) &&
+        guidePath === expectedGuide &&
         meaningfulPurpose(module.purpose);
       if (!valid) {
         findings.push(
@@ -869,7 +920,7 @@ function validateNavigationEntries(
             "error",
             "MAP_MODULE_INVALID",
             location,
-            "Module needs an existing directory, guide, and meaningful purpose.",
+            "Module needs an existing directory, its MODULE.md guide, and a meaningful purpose.",
           ),
         );
       } else {
@@ -1230,10 +1281,11 @@ export function auditRepository(repository, minimumScore) {
   const findings = [];
 
   const categories = {
-    rootGuide: (25 * scoreRootGuide(root, findings)) / 30,
-    directoryGuides:
+    agentInstructions: (10 * scoreRootGuide(root, findings)) / 30,
+    architecture: (15 * scoreArchitecture(root, findings)) / 30,
+    moduleGuides:
       (20 *
-        scoreDirectoryGuides(
+        scoreModuleGuides(
           root,
           significantDirectories,
           config,

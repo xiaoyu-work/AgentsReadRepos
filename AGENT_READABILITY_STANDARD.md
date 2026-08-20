@@ -1,77 +1,97 @@
 # Agent-Friendly Repository Standard v1.0
 
-This standard reduces the search and context required for a coding agent to
-understand an unfamiliar repository. It avoids large amounts of duplicated
-documentation that are likely to become stale.
+This standard reduces the context a coding agent needs to understand an
+unfamiliar repository. It separates working instructions from architecture so
+each document has one clear responsibility.
 
 Companion files:
 
-- `CODING_AGENT_PROMPT.md`: a complete prompt for migrating a repository.
-- `ROOT_AGENTS_TEMPLATE.md`: a template to copy into a target repository as
-  its root `AGENTS.md`.
-- `check-agent-readability.mjs`: an automated conformance auditor.
+- `CODING_AGENT_PROMPT.md`: complete repository migration prompt.
+- `ROOT_AGENTS_TEMPLATE.md`: template for root agent instructions.
+- `ARCHITECTURE_TEMPLATE.md`: template for repository architecture.
+- `MODULE_TEMPLATE.md`: template for significant-directory documentation.
+- `check-agent-readability.mjs`: automated conformance auditor.
 
-## 1. Design Principles
+## 1. Document Ownership
 
-1. **Explain boundaries before details.** Module responsibilities, entry
-   points, data flow, and invariants are more useful than inventories of
-   private helpers.
-2. **Keep documentation close to code.** Repository-level information belongs
-   at the root; module-level information belongs in the module directory.
-3. **Generate derivable information.** File indexes and public symbols belong
-   in the repository map and should be produced from code facts.
+| Artifact | Owns | Must not contain |
+|---|---|---|
+| Root `AGENTS.md` | Agent workflow, development and test commands, coding conventions, and documentation update rules | Architecture, component design, data flow, or duplicated module descriptions |
+| Root `ARCHITECTURE.md` | System purpose, context, components, dependency rules, data flow, entry points, and cross-cutting constraints | Agent behavior instructions or task execution procedures |
+| Directory `MODULE.md` | One directory's purpose, responsibilities, key files, dependencies, and tests | Repository-wide architecture or general agent workflow |
+| `.agent/repo-map.json` | Machine-readable paths, module index, entry points, file purposes, and public symbols | Long prose or behavioral instructions |
+| Source-file `@agent-*` header | File-specific purpose, public API, invariants, and side effects | Repository architecture or ordinary private-helper inventories |
+
+When information changes, update the artifact that owns that information. Do
+not copy the same architecture prose into `AGENTS.md`.
+
+## 2. Design Principles
+
+1. **Separate instructions from architecture.** `AGENTS.md` explains how an
+   agent should work; `ARCHITECTURE.md` explains how the system is designed.
+2. **Keep module facts close to code.** Significant directories use
+   `MODULE.md`.
+3. **Generate derivable indexes.** File paths and public symbols belong in the
+   repository map and should come from code facts.
 4. **Treat code as the source of truth.** Documentation must not guess about
-   behavior. Mark facts that cannot be verified as unresolved.
-5. **Do not perform risky refactors merely to pass an audit.** A large legacy
-   or generated file may use a narrow, justified exemption when safe
-   restructuring is not currently possible.
-6. **Write descriptions that improve navigation.** Do not use placeholders
-   such as "utility code," "business logic," or "handles related operations."
-7. **Read file headers before file bodies.** Every source file must expose a
-   fixed agent summary in its first 50 lines so an agent can reject irrelevant
-   files without reading them in full.
+   behavior.
+5. **Read indexes before bodies.** Agents should use the repository map and
+   source-file headers to reject irrelevant files before reading them fully.
+6. **Avoid risky compliance refactors.** Use a narrow, justified exemption
+   when generated or legacy code cannot be safely changed.
+7. **Use concrete descriptions.** Do not use placeholders such as "utility
+   code," "business logic," or "handles related operations."
 
-## 2. Required Repository Structure
-
-A conforming code repository contains at least:
+## 3. Required Repository Structure
 
 ```text
 repository/
 |-- AGENTS.md
+|-- ARCHITECTURE.md
 |-- .agent/
 |   `-- repo-map.json
 |-- .agent-readability.json       # Optional
 |-- src/
-|   |-- AGENTS.md                 # Required when src is significant
+|   |-- MODULE.md                 # Required when src is significant
 |   `-- ...
 `-- ...
 ```
 
-### 2.1 Root `AGENTS.md`
+### 3.1 Root `AGENTS.md`
 
-The repository root must contain `AGENTS.md` with the following non-empty
-sections:
+The root `AGENTS.md` contains operational instructions only. It must contain
+these non-empty sections:
 
 | Canonical section | Accepted headings | Required information |
 |---|---|---|
-| Purpose | `Purpose`, `Goal` | What problem does the repository solve, and what is outside its scope? |
-| Architecture | `Architecture`, `System Design` | How do the main modules connect, and what is the dependency direction? |
-| Entry Points | `Entry Points`, `Entry Point` | Where should an agent begin reading, running, or calling the system? |
-| Development | `Development`, `Local Development` | How are dependencies installed and the project built or started? |
-| Testing | `Testing`, `Tests` | What are the narrow and complete validation commands? |
-| Conventions | `Conventions`, `Coding Conventions` | What repository-specific rules and invariants must be preserved? |
+| Repository Documents | `Repository Documents`, `Navigation`, `Read First` | Links to `ARCHITECTURE.md`, `.agent/repo-map.json`, and relevant `MODULE.md` files |
+| Development | `Development`, `Local Development` | Installation, startup, and build commands |
+| Testing | `Testing`, `Tests` | Narrow and complete validation commands |
+| Conventions | `Conventions`, `Coding Conventions` | Repository-specific implementation rules |
+| Agent Workflow | `Agent Workflow`, `Workflow` | Required read-before-edit and edit behavior |
+| Documentation Updates | `Documentation Updates`, `Documentation Update Triggers` | Which artifact changes for each kind of code change |
 
-Keep the root guide concise and link to module guides through relative paths.
-It does not replace the product README.
+Do not place component descriptions, dependency diagrams, data flow, or entry
+point explanations in `AGENTS.md`. Link to `ARCHITECTURE.md` instead.
 
-Copy `ROOT_AGENTS_TEMPLATE.md` into the target repository as `AGENTS.md` when a
-starting template is useful. Replace every `{{...}}` placeholder with verified
-repository facts before committing it.
+### 3.2 Root `ARCHITECTURE.md`
 
-### 2.2 Significant-Directory `AGENTS.md`
+The root `ARCHITECTURE.md` must contain these non-empty sections:
 
-The auditor considers a non-root directory significant when any of these
-conditions is true:
+- `Purpose`
+- `System Context`
+- `Components`
+- `Dependency Rules`
+- `Data Flow`
+- `Entry Points`
+- `Cross-Cutting Constraints`
+
+This file contains system facts only. It must not instruct an agent how to run
+tasks, sequence edits, or maintain documentation.
+
+### 3.3 Significant-Directory `MODULE.md`
+
+A non-root directory is significant when any condition is true:
 
 - it directly contains at least three source files;
 - it is named `src`, `app`, `lib`, `libs`, `packages`, `services`, `modules`,
@@ -80,7 +100,7 @@ conditions is true:
   `pyproject.toml`, `go.mod`, `Cargo.toml`, `pom.xml`, or `*.csproj`, and has
   source files below it.
 
-Every significant directory must contain `AGENTS.md` with these non-empty
+Every significant directory must contain `MODULE.md` with these non-empty
 sections:
 
 - `Purpose`
@@ -89,23 +109,12 @@ sections:
 - `Dependencies`
 - `Tests`
 
-The guide should state:
+`MODULE.md` documents local module facts. Repository-wide component
+relationships remain in `ARCHITECTURE.md`.
 
-- what the directory owns and does not own;
-- the recommended reading order;
-- upstream callers and downstream dependencies;
-- how state, data, or requests move through the module;
-- constraints that are not obvious from types and names; and
-- associated test locations and commands.
+### 3.4 `.agent/repo-map.json`
 
-Do not mechanically copy the same guide into pure organizational directories.
-Use a narrow, justified exemption when a directory genuinely does not need its
-own guide.
-
-### 2.3 `.agent/repo-map.json`
-
-The repository map must be UTF-8 JSON and use `/` in repository-relative paths.
-Its basic structure is:
+The repository map is UTF-8 JSON and uses `/` in repository-relative paths:
 
 ```json
 {
@@ -115,14 +124,14 @@ Its basic structure is:
   "entryPoints": [
     {
       "path": "src/main.py",
-      "purpose": "Starts the command-line application and assembles top-level dependencies"
+      "purpose": "Starts the application and assembles top-level dependencies"
     }
   ],
   "modules": [
     {
       "path": "src/orders",
       "purpose": "Implements order creation, state transitions, and persistence orchestration",
-      "guide": "src/orders/AGENTS.md"
+      "guide": "src/orders/MODULE.md"
     }
   ],
   "files": [
@@ -139,58 +148,83 @@ Its basic structure is:
 }
 ```
 
-Field requirements:
+Requirements:
 
-- `schemaVersion`: the integer `1`.
-- `generatedAt`: an ISO 8601 timestamp with a timezone.
-- `sourceFingerprint`: the fingerprint calculated by the auditor.
-- `entryPoints`: at least one runtime, reading, or public API entry point. A
-  library can use its public export file.
-- `modules`: every non-exempt significant directory.
-- `files`: every non-excluded source file.
-- `purpose`: at least eight non-whitespace characters and a concrete,
-  file-specific or module-specific responsibility.
-- `publicSymbols`: all public or exported classes, functions, interfaces, and
-  constants. Use an empty array when none exist.
-- `kind`: normally `source`, `test`, `generated`, or `config`.
+- `schemaVersion` is the integer `1`.
+- `generatedAt` is an ISO 8601 timestamp with a timezone.
+- `sourceFingerprint` matches the current source fingerprint.
+- `entryPoints` contains at least one runtime, reading, or public API entry.
+- `modules` covers every non-exempt significant directory and points to that
+  directory's `MODULE.md`.
+- `files` covers every non-excluded source file.
+- Every `purpose` contains at least eight non-whitespace characters and states
+  a concrete responsibility.
+- `publicSymbols` contains all public or exported classes, functions,
+  interfaces, and constants. Use an empty array when none exist.
+- `kind` normally uses `source`, `test`, `generated`, or `config`.
 
-The auditor calculates `sourceFingerprint` as follows:
-
-1. Sort source files by repository-relative path.
-2. Normalize path separators to `/`.
-3. Normalize `CRLF` and `CR` content to `LF`.
-4. For each file, hash `UTF-8 path + NUL + content + NUL`.
-5. Produce a SHA-256 digest over the full sequence.
-
-Print the current fingerprint with:
+The auditor calculates `sourceFingerprint` by sorting source paths, normalizing
+paths to `/`, normalizing line endings to `LF`, and hashing each
+`UTF-8 path + NUL + content + NUL` sequence with SHA-256.
 
 ```console
 node check-agent-readability.mjs PATH_TO_REPOSITORY --fingerprint
 ```
 
-The repository map should be generated from code facts through language tools,
-AST inspection, or a coding agent. Refresh it after source changes; the auditor
-rejects stale fingerprints.
+Refresh the repository map after source changes.
 
-## 3. Source-File Size
+## 4. Source-File Agent Headers
+
+Every non-exempt source file must contain a 5-15 line native-language comment
+block within its first 50 lines:
+
+```text
+@agent-file
+@agent-purpose: <the file's specific responsibility>
+@agent-public-api: <all public or exported symbols; use none when empty>
+@agent-invariants: <constraints that must remain true; use none when empty>
+@agent-side-effects: <I/O, network, database, or global-state effects; use none when empty>
+```
+
+Example:
+
+```ts
+/**
+ * @agent-file
+ * @agent-purpose: Validates order transitions and records accepted state changes.
+ * @agent-public-api: OrderStateMachine, transitionOrder
+ * @agent-invariants: Completed and cancelled orders cannot return to an active state.
+ * @agent-side-effects: none
+ */
+```
+
+Requirements:
+
+- fields appear in the exact order above;
+- `@agent-purpose` contains at least eight non-whitespace characters;
+- empty public APIs, invariants, and side effects use `none`;
+- `@agent-public-api` matches the file's `publicSymbols` map entry;
+- a shebang, encoding declaration, or legally required copyright header may
+  appear first, but the complete summary remains within the first 50 lines;
+- changes to file purpose, public API, invariants, or side effects update the
+  header in the same change; and
+- only generated files that cannot be edited directly may use
+  `exemptions.fileHeaders`.
+
+## 5. Source-File Size
 
 Default thresholds:
 
-- **Recommended maximum: 800 lines.** Larger files produce a warning and lose
-  points.
-- **Hard maximum: 2,000 lines.** Larger files fail the audit.
+- recommended maximum: 800 lines;
+- hard maximum: 2,000 lines.
 
-Line count is a complexity signal, not a refactoring target. Split files along
-stable responsibilities, dependency directions, and testable boundaries. Do
-not divide tightly coupled logic into arbitrary fragments merely to satisfy a
-number.
+Files over 800 lines produce a warning and lose points. Files over 2,000 lines
+fail unless narrowly exempted. Split files along stable responsibilities and
+testable boundaries, not arbitrary line counts.
 
-Generated outputs, protocol artifacts, and legacy files that cannot currently
-be split safely may use a specific exemption with a concrete reason.
+## 6. Optional Configuration
 
-## 4. Optional Configuration
-
-A repository may create `.agent-readability.json` at its root:
+The repository may create `.agent-readability.json`:
 
 ```json
 {
@@ -209,10 +243,10 @@ A repository may create `.agent-readability.json` at its root:
   "minScore": 85,
   "exemptions": {
     "oversizedFiles": {
-      "src/legacy/parser.py": "Generated grammar output; the maintained source is parser.y"
+      "src/legacy/parser.py": "Generated grammar output; maintained source is parser.y"
     },
-    "directoryGuides": {
-      "src/compat": "Two-file compatibility shim documented by src/AGENTS.md"
+    "moduleGuides": {
+      "src/compat": "Two-file compatibility shim documented by its parent module"
     },
     "mapFiles": {
       "tests/fixtures/huge_generated.py": "Generated fixture with no maintainable public API"
@@ -224,40 +258,27 @@ A repository may create `.agent-readability.json` at its root:
 }
 ```
 
-Configuration requirements:
+Every exemption uses a repository-relative `/` path and a concrete reason.
+Broad exclusions must not hide a business-code root. `recommendedMaxLines`
+cannot exceed `hardMaxLines`.
 
-- all exemption paths use `/` and are relative to the repository root;
-- exclusion entries use glob syntax;
-- every exemption has a non-empty reason;
-- `recommendedMaxLines` is not greater than `hardMaxLines`; and
-- broad patterns must not hide most business source code.
-
-The auditor ignores common dependency, build, cache, IDE, version-control, and
-generated-code directories by default.
-
-## 5. Scoring and Passing
-
-The total score is 100:
+## 7. Scoring and Passing
 
 | Category | Points |
 |---|---:|
-| Root `AGENTS.md` | 25 |
-| Significant-directory guides | 20 |
+| Root agent instructions | 10 |
+| Root architecture | 15 |
+| Significant-directory module guides | 20 |
 | `.agent/repo-map.json` | 25 |
 | Source-file agent headers | 20 |
 | Source-file size | 10 |
 
-A repository passes only when:
-
-1. it reaches `minScore`, which defaults to 85; and
-2. it has no `error` findings.
-
-Commands:
+A repository passes when it reaches the configured minimum score, which
+defaults to 85, and has no `error` findings.
 
 ```console
 node check-agent-readability.mjs PATH_TO_REPOSITORY
 node check-agent-readability.mjs PATH_TO_REPOSITORY --format json
-node check-agent-readability.mjs PATH_TO_REPOSITORY --min-score 90
 ```
 
 Exit codes:
@@ -266,75 +287,23 @@ Exit codes:
 - `1`: repository does not meet the standard;
 - `2`: invalid path, configuration, or invocation.
 
-## 6. Source-File Agent Headers
+## 8. Documentation Update Ownership
 
-Every non-exempt source file must contain a 5-15 line native-language comment
-block within its **first 50 lines**. The fields and order are fixed:
+| Change | Required update |
+|---|---|
+| Source-file responsibility, API, invariant, or side effect changes | That file's `@agent-*` header and matching repository-map file entry |
+| File is added, deleted, renamed, moved, or split | Nearest `MODULE.md`, repository-map `files`, affected entry points, and fingerprint |
+| Module responsibility, dependency, key files, or tests change | That module's `MODULE.md`; update `ARCHITECTURE.md` only when the system-level design also changes |
+| System components, dependency rules, data flow, or entry points change | Root `ARCHITECTURE.md` and matching repository-map entries |
+| Development commands, test commands, conventions, or agent workflow change | Root `AGENTS.md` |
 
-```text
-@agent-file
-@agent-purpose: <the file's specific responsibility>
-@agent-public-api: <public or exported classes, functions, interfaces, and constants; use none when empty>
-@agent-invariants: <constraints callers and maintainers must preserve; use none when empty>
-@agent-side-effects: <I/O, network, database, or global-state effects; use none when empty>
-```
+Documentation updates are part of the code change. Do not leave stale
+architecture, paths, symbols, or commands for a later agent.
 
-JavaScript or TypeScript example:
+## 9. Limits of Automated Auditing
 
-```ts
-/**
- * @agent-file
- * @agent-purpose: Validates order transitions and records accepted state changes.
- * @agent-public-api: OrderStateMachine, transitionOrder
- * @agent-invariants: Completed and cancelled orders cannot return to an active state.
- * @agent-side-effects: none
- */
-```
-
-Python example:
-
-```python
-"""
-@agent-file
-@agent-purpose: Loads order records and maps database rows into domain objects.
-@agent-public-api: OrderRepository, find_order
-@agent-invariants: Returned monetary values are integer cents.
-@agent-side-effects: Reads and writes the orders database table.
-"""
-```
-
-Requirements:
-
-- `@agent-purpose` contains at least eight non-whitespace characters and
-  distinguishes the file from adjacent files.
-- `@agent-public-api` lists every public or exported symbol but does not list
-  ordinary private helpers.
-- Empty public APIs, invariants, or side effects are written explicitly as
-  `none`; fields are never left blank.
-- Changes to responsibility, public symbols, constraints, or side effects
-  update the header in the same change.
-- `@agent-public-api` stays consistent with the matching `publicSymbols` entry
-  in `repo-map.json`.
-- A shebang, encoding declaration, or legally required copyright header may
-  appear before the block, but the complete summary remains within the first
-  50 lines.
-- Only generated files that cannot be edited directly may use a per-file
-  `exemptions.fileHeaders` entry.
-
-This summary determines whether a full file read is necessary. An agent should
-read the root guide, repository map, and first 50 lines of candidate files,
-then read complete files only when their summaries show relevance.
-
-## 7. Limits of Automated Auditing
-
-The auditor verifies document structure, header fields, path and map coverage,
-file size, and repository-map freshness. It cannot prove that natural-language
-descriptions are semantically correct. Final review should also:
-
-1. sample three to five files and compare each `purpose` with the code;
-2. trace one real call chain from every entry point to verify architecture and
-   dependency direction;
-3. run the build and test commands documented in the root guide; and
-4. confirm that a new agent can locate major functionality, entry points, and
-   tests by reading the root guide, repository map, and candidate-file headers.
+The auditor verifies structure, required fields, map coverage, file size, and
+fingerprint freshness. It cannot prove that natural-language descriptions are
+semantically correct. Final review should sample source headers and map entries,
+trace entry-point call chains, and run the documented project commands.
 
