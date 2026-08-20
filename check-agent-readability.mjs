@@ -2,10 +2,10 @@
 
 /**
  * @agent-file
- * @agent-purpose: Audits repositories against Agent-Friendly Repository Standard v1.0.
- * @agent-public-api: TOOL_VERSION, ConfigError, loadConfig, discoverSourceFiles, computeSourceFingerprint, findSourceDirectories, auditRepository, main
+ * @agent-purpose: Audits repositories and generates their machine-readable navigation maps.
+ * @agent-public-api: TOOL_VERSION, ConfigError, loadConfig, discoverSourceFiles, computeSourceFingerprint, findModuleDirectories, generateRepositoryMap, auditRepository, main
  * @agent-invariants: Audit operations are read-only and use repository-relative normalized paths.
- * @agent-side-effects: Reads target files and writes reports to stdout or stderr; never modifies the target.
+ * @agent-side-effects: Reads target files; --generate-map writes .agent/repo-map.json; reports use stdout or stderr.
  */
 
 import crypto from "node:crypto";
@@ -15,10 +15,12 @@ import process from "node:process";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 
-export const TOOL_VERSION = "1.0.0";
+export const TOOL_VERSION = "1.1.0";
 const CONFIG_NAME = ".agent-readability.json";
 const MAP_PATH = ".agent/repo-map.json";
 const MEANINGFUL_PURPOSE_LENGTH = 8;
+const MAP_SCHEMA_VERSION = 2;
+const MAP_GENERATOR = `check-agent-readability@${TOOL_VERSION}`;
 
 const DEFAULT_SOURCE_EXTENSIONS = new Set([
   ".c",
@@ -99,6 +101,32 @@ const DEFAULT_EXCLUDE_PATTERNS = [
   "*_pb2.py",
   "*_pb2_grpc.py",
 ];
+
+const SOURCE_ROOT_NAMES = new Set([
+  "app",
+  "components",
+  "lib",
+  "libs",
+  "modules",
+  "packages",
+  "services",
+  "src",
+]);
+
+const MANIFEST_NAMES = new Set([
+  "Cargo.toml",
+  "Gemfile",
+  "build.gradle",
+  "build.gradle.kts",
+  "composer.json",
+  "go.mod",
+  "mix.exs",
+  "package.json",
+  "pom.xml",
+  "pyproject.toml",
+  "settings.gradle",
+  "settings.gradle.kts",
+]);
 
 const ROOT_AGENT_SECTIONS = {
   "Repository Documents": ["repository documents", "navigation", "read first"],
@@ -286,6 +314,16 @@ export function loadConfig(repositoryRoot) {
     sourceExtensions.add(normalized.startsWith(".") ? normalized : `.${normalized}`);
   }
 
+  const significantDirectoryMinFiles = positiveInteger(
+    raw.significantDirectoryMinFiles,
+    "significantDirectoryMinFiles",
+    3,
+  );
+  const significantDirectoryRecursiveFiles = positiveInteger(
+    raw.significantDirectoryRecursiveFiles,
+    "significantDirectoryRecursiveFiles",
+    5,
+  );
   const recommendedMaxLines = positiveInteger(
     raw.recommendedMaxLines,
     "recommendedMaxLines",
@@ -304,6 +342,8 @@ export function loadConfig(repositoryRoot) {
   return {
     excludePatterns,
     sourceExtensions,
+    significantDirectoryMinFiles,
+    significantDirectoryRecursiveFiles,
     recommendedMaxLines,
     hardMaxLines,
     minScore: numberInRange(raw.minScore, "minScore", 85, 0, 100),
@@ -425,13 +465,55 @@ export function computeSourceFingerprint(repositoryRoot, sourceFiles) {
   return digest.digest("hex");
 }
 
-export function findSourceDirectories(sourceFiles) {
-  const result = new Set();
+function increment(map, key) {
+  map.set(key, (map.get(key) ?? 0) + 1);
+}
+
+function directoryHasManifest(root, relativeDirectory) {
+  const directory = absolutePath(root, relativeDirectory);
+  return fs.readdirSync(directory, { withFileTypes: true }).some((entry) => {
+    if (!entry.isFile()) {
+      return false;
+    }
+    return (
+      MANIFEST_NAMES.has(entry.name) ||
+      entry.name.endsWith(".csproj") ||
+      entry.name.endsWith(".fsproj")
+    );
+  });
+}
+
+export function findModuleDirectories(repositoryRoot, sourceFiles, config) {
+  const root = path.resolve(repositoryRoot);
+  const directCounts = new Map();
+  const recursiveCounts = new Map();
+
   for (const sourceFile of sourceFiles) {
     let parent = path.posix.dirname(sourceFile);
+    if (parent !== ".") {
+      increment(directCounts, parent);
+    }
     while (parent !== ".") {
-      result.add(parent);
+      increment(recursiveCounts, parent);
       parent = path.posix.dirname(parent);
+    }
+  }
+
+  const result = new Set();
+  for (const [directory, count] of directCounts) {
+    if (count >= config.significantDirectoryMinFiles) {
+      result.add(directory);
+    }
+  }
+  for (const [directory, count] of recursiveCounts) {
+    if (
+      SOURCE_ROOT_NAMES.has(path.posix.basename(directory).toLowerCase()) &&
+      count >= config.significantDirectoryRecursiveFiles
+    ) {
+      result.add(directory);
+    }
+    if (count > 0 && directoryHasManifest(root, directory)) {
+      result.add(directory);
     }
   }
   return [...result].sort();
@@ -615,7 +697,7 @@ function scoreModuleGuides(root, directories, config, findings) {
           "error",
           "MODULE_GUIDE_MISSING",
           guideRelative,
-          "Every source-containing directory requires a MODULE.md.",
+          "A detected module directory requires a MODULE.md.",
         ),
       );
       continue;
@@ -641,7 +723,208 @@ function scoreModuleGuides(root, directories, config, findings) {
   return (25 * earned) / directories.length;
 }
 
-function validateMapFiles(data, expectedFiles, findings) {
+function firstSectionSummary(filePath, aliases) {
+  const section = markdownSections(readUtf8(filePath)).find((candidate) =>
+    aliases.some((alias) => candidate.heading.includes(normalizeHeading(alias))),
+  );
+  if (!section) {
+    return null;
+  }
+  const withoutComments = section.body.replace(/<!--[\s\S]*?-->/g, " ");
+  const paragraph = withoutComments
+    .split(/\n\s*\n/)
+    .map((item) => item.replace(/\s+/g, " ").trim())
+    .find(Boolean);
+  if (!paragraph || paragraph.includes("{{")) {
+    return null;
+  }
+  return paragraph.replace(/^[>*#\-\s]+/, "").trim();
+}
+
+function readAgentHeader(root, sourceFile) {
+  const firstLines = fs
+    .readFileSync(absolutePath(root, sourceFile), "utf8")
+    .split(/\r\n|\r|\n/)
+    .slice(0, 50);
+  const markerIndex = firstLines.findIndex((line) =>
+    /@agent-file(?:\s|$)/.test(line),
+  );
+  const tags = [
+    "@agent-purpose",
+    "@agent-public-api",
+    "@agent-invariants",
+    "@agent-side-effects",
+  ];
+  const values = {};
+  const indexes = {};
+  for (const tag of tags) {
+    const tagIndex = firstLines.findIndex(
+      (line, index) => index > markerIndex && headerTagValue(line, tag) !== null,
+    );
+    indexes[tag] = tagIndex;
+    values[tag] = tagIndex === -1 ? null : headerTagValue(firstLines[tagIndex], tag);
+  }
+  const ordered =
+    markerIndex !== -1 &&
+    tags.every(
+      (tag, index) =>
+        indexes[tag] !== -1 &&
+        (index === 0 || indexes[tag] > indexes[tags[index - 1]]),
+    );
+  const span =
+    markerIndex === -1 || tags.some((tag) => indexes[tag] === -1)
+      ? null
+      : Math.max(...tags.map((tag) => indexes[tag])) - markerIndex + 1;
+  const valid =
+    markerIndex !== -1 &&
+    ordered &&
+    span <= 15 &&
+    meaningfulPurpose(values["@agent-purpose"]) &&
+    tags
+      .slice(1)
+      .every(
+        (tag) => typeof values[tag] === "string" && values[tag].length > 0,
+      );
+  return { firstLines, markerIndex, tags, values, indexes, ordered, span, valid };
+}
+
+function publicSymbolsFromHeader(value) {
+  if (typeof value !== "string" || value.trim().toLowerCase() === "none") {
+    return [];
+  }
+  return value
+    .split(",")
+    .map((symbol) => symbol.trim())
+    .filter(Boolean);
+}
+
+function inferSourceKind(sourceFile, headerExemption) {
+  if (headerExemption) {
+    return "generated";
+  }
+  const normalized = sourceFile.toLowerCase();
+  if (
+    /(^|\/)(__tests__|tests?|specs?)(\/|$)/.test(normalized) ||
+    /(?:\.test|\.spec|_test)\.[^/]+$/.test(normalized)
+  ) {
+    return "test";
+  }
+  return "source";
+}
+
+function buildExpectedMapFiles(root, sourceFiles, config, strict = false) {
+  const exemptMapFiles = new Set(Object.keys(config.mapFileExemptions));
+  return sourceFiles
+    .filter((sourceFile) => !exemptMapFiles.has(sourceFile))
+    .map((sourceFile) => {
+      const headerExemption = config.fileHeaderExemptions[sourceFile];
+      if (headerExemption) {
+        return {
+          path: sourceFile,
+          kind: "generated",
+          purpose: `Generated source file: ${headerExemption}`,
+          publicSymbols: [],
+        };
+      }
+
+      const header = readAgentHeader(root, sourceFile);
+      if (!header.valid && strict) {
+        throw new ConfigError(
+          `cannot generate ${MAP_PATH}: ${sourceFile} has an invalid @agent-* header`,
+        );
+      }
+      return {
+        path: sourceFile,
+        kind: inferSourceKind(sourceFile, headerExemption),
+        purpose:
+          header.values["@agent-purpose"] ??
+          "Missing valid source-file agent purpose",
+        publicSymbols: publicSymbolsFromHeader(
+          header.values["@agent-public-api"],
+        ),
+      };
+    });
+}
+
+function buildExpectedMapModules(root, moduleDirectories, config, strict = false) {
+  const exemptDirectories = new Set(Object.keys(config.moduleGuideExemptions));
+  return moduleDirectories
+    .filter((directory) => !exemptDirectories.has(directory))
+    .map((directory) => {
+      const guide = `${directory}/MODULE.md`;
+      const guidePath = absolutePath(root, guide);
+      const purpose = isExistingFile(root, guide)
+        ? firstSectionSummary(guidePath, MODULE_SECTIONS.Purpose)
+        : null;
+      if ((!isExistingFile(root, guide) || !meaningfulPurpose(purpose)) && strict) {
+        throw new ConfigError(
+          `cannot generate ${MAP_PATH}: ${guide} needs a meaningful Purpose section`,
+        );
+      }
+      return {
+        path: directory,
+        purpose: purpose ?? "Missing valid module purpose",
+        guide,
+      };
+    });
+}
+
+export function generateRepositoryMap(repository) {
+  const root = validateRepositoryRoot(repository);
+  const config = loadConfig(root);
+  const sourceFiles = discoverSourceFiles(root, config);
+  const moduleDirectories = findModuleDirectories(root, sourceFiles, config);
+  const preparationFindings = [];
+
+  scoreRootGuide(root, preparationFindings);
+  scoreArchitecture(root, preparationFindings);
+  scoreModuleGuides(root, moduleDirectories, config, preparationFindings);
+  scoreFileHeaders(root, sourceFiles, config, preparationFindings);
+
+  const errors = preparationFindings.filter(
+    (item) => item.severity === "error",
+  );
+  if (errors.length > 0) {
+    const preview = errors
+      .slice(0, 5)
+      .map((item) => `${item.path}: ${item.message}`)
+      .join("; ");
+    const suffix = errors.length > 5 ? ` (+${errors.length - 5} more)` : "";
+    throw new ConfigError(
+      `cannot generate ${MAP_PATH} until required documentation is valid: ${preview}${suffix}`,
+    );
+  }
+
+  const map = {
+    schemaVersion: MAP_SCHEMA_VERSION,
+    generatedAt: new Date().toISOString(),
+    generatedBy: MAP_GENERATOR,
+    sourceFingerprint: computeSourceFingerprint(root, sourceFiles),
+    modules: buildExpectedMapModules(
+      root,
+      moduleDirectories,
+      config,
+      true,
+    ),
+    files: buildExpectedMapFiles(root, sourceFiles, config, true),
+  };
+  const mapFile = absolutePath(root, MAP_PATH);
+  fs.mkdirSync(path.dirname(mapFile), { recursive: true });
+  fs.writeFileSync(mapFile, `${JSON.stringify(map, null, 2)}\n`, "utf8");
+  return { path: mapFile, map };
+}
+
+function mapEntryMatches(actual, expected) {
+  return (
+    actual.path === expected.path &&
+    actual.kind === expected.kind &&
+    actual.purpose === expected.purpose &&
+    Array.isArray(actual.publicSymbols) &&
+    JSON.stringify(actual.publicSymbols) === JSON.stringify(expected.publicSymbols)
+  );
+}
+
+function validateMapFiles(data, expectedEntries, findings) {
   const entries = data.files;
   if (!Array.isArray(entries)) {
     findings.push(
@@ -650,6 +933,10 @@ function validateMapFiles(data, expectedFiles, findings) {
     return { score: 0, mappedPaths: new Set() };
   }
 
+  const expectedByPath = new Map(
+    expectedEntries.map((entry) => [entry.path, entry]),
+  );
+  const expectedFiles = new Set(expectedByPath.keys());
   const mappedPaths = new Set();
   const qualityByPath = new Map();
   entries.forEach((entry, index) => {
@@ -693,7 +980,13 @@ function validateMapFiles(data, expectedFiles, findings) {
         (symbol) => typeof symbol === "string" && symbol.trim() !== "",
       );
     const kindOk = typeof entry.kind === "string" && entry.kind.trim() !== "";
-    qualityByPath.set(entryPath, purposeOk && symbolsOk && kindOk);
+    const expected = expectedByPath.get(entryPath);
+    const generatedMatch =
+      expected !== undefined && mapEntryMatches(entry, expected);
+    qualityByPath.set(
+      entryPath,
+      purposeOk && symbolsOk && kindOk && generatedMatch,
+    );
 
     if (!purposeOk) {
       findings.push(
@@ -722,6 +1015,16 @@ function validateMapFiles(data, expectedFiles, findings) {
           "MAP_FILE_KIND_INVALID",
           entryPath,
           "kind must be a non-empty string.",
+        ),
+      );
+    }
+    if (purposeOk && symbolsOk && kindOk && expected && !generatedMatch) {
+      findings.push(
+        finding(
+          "error",
+          "MAP_FILE_STALE",
+          entryPath,
+          "Generated file metadata differs from the source header; regenerate the map.",
         ),
       );
     }
@@ -767,54 +1070,18 @@ function validateMapFiles(data, expectedFiles, findings) {
   return { score: 15 * (0.7 * coverage + 0.3 * quality), mappedPaths };
 }
 
-function validateNavigationEntries(
+function validateMapModules(
   root,
   data,
-  sourceDirectories,
-  config,
+  expectedModules,
   findings,
 ) {
-  let score = 0;
-  const entryPoints = data.entryPoints;
-  if (!Array.isArray(entryPoints) || entryPoints.length === 0) {
-    findings.push(
-      finding(
-        "error",
-        "MAP_ENTRY_POINTS_INVALID",
-        MAP_PATH,
-        "entryPoints must contain at least one navigation or public API entry.",
-      ),
-    );
-  } else {
-    let validEntryPoints = 0;
-    entryPoints.forEach((entry, index) => {
-      const location = `${MAP_PATH}#entryPoints[${index}]`;
-      const entryPath = isPlainObject(entry) ? safeMapPath(entry.path) : null;
-      if (
-        !isPlainObject(entry) ||
-        !isExistingFile(root, entryPath) ||
-        !meaningfulPurpose(entry.purpose)
-      ) {
-        findings.push(
-          finding(
-            "error",
-            "MAP_ENTRY_POINT_INVALID",
-            location,
-            "Entry point needs an existing file path and a meaningful purpose.",
-          ),
-        );
-      } else {
-        validEntryPoints += 1;
-      }
-    });
-    score += (2.5 * validEntryPoints) / entryPoints.length;
-  }
-
   const modules = data.modules;
-  const exemptDirectories = new Set(Object.keys(config.moduleGuideExemptions));
-  const requiredModules = new Set(
-    [...sourceDirectories].filter((item) => !exemptDirectories.has(item)),
+  const expectedByPath = new Map(
+    expectedModules.map((module) => [module.path, module]),
   );
+  const requiredModules = new Set(expectedByPath.keys());
+  const mappedModules = new Set();
   const validModules = new Set();
 
   if (!Array.isArray(modules)) {
@@ -826,21 +1093,37 @@ function validateNavigationEntries(
       const location = `${MAP_PATH}#modules[${index}]`;
       const modulePath = isPlainObject(module) ? safeMapPath(module.path) : null;
       const guidePath = isPlainObject(module) ? safeMapPath(module.guide) : null;
-      const expectedGuide =
-        modulePath === null ? null : `${modulePath}/MODULE.md`;
+      const expected = expectedByPath.get(modulePath);
+      if (modulePath !== null) {
+        if (mappedModules.has(modulePath)) {
+          findings.push(
+            finding(
+              "error",
+              "MAP_MODULE_DUPLICATE",
+              modulePath,
+              "Module appears more than once in repo-map.json.",
+            ),
+          );
+          return;
+        }
+        mappedModules.add(modulePath);
+      }
       const valid =
         isPlainObject(module) &&
         isExistingDirectory(root, modulePath) &&
         isExistingFile(root, guidePath) &&
-        guidePath === expectedGuide &&
-        meaningfulPurpose(module.purpose);
+        meaningfulPurpose(module.purpose) &&
+        expected !== undefined &&
+        module.path === expected.path &&
+        module.guide === expected.guide &&
+        module.purpose === expected.purpose;
       if (!valid) {
         findings.push(
           finding(
             "error",
             "MAP_MODULE_INVALID",
             location,
-            "Module needs an existing directory, its MODULE.md guide, and a meaningful purpose.",
+            "Module metadata must match its generated MODULE.md summary.",
           ),
         );
       } else {
@@ -857,24 +1140,35 @@ function validateNavigationEntries(
           "error",
           "MAP_MODULE_COVERAGE",
           MAP_PATH,
-          `Missing source-directory module(s): ${missingModules.join(", ")}`,
+          `Missing detected module(s): ${missingModules.join(", ")}`,
         ),
       );
     }
-    score +=
-      requiredModules.size === 0
-        ? 2.5
-        : (2.5 *
-            [...requiredModules].filter((item) => validModules.has(item)).length) /
-          requiredModules.size;
+    const extraModules = [...mappedModules].filter(
+      (item) => !requiredModules.has(item),
+    );
+    if (extraModules.length > 0) {
+      findings.push(
+        finding(
+          "error",
+          "MAP_MODULE_EXTRA",
+          MAP_PATH,
+          `Map contains unexpected module(s): ${extraModules.join(", ")}`,
+        ),
+      );
+    }
   }
-  return score;
+  return requiredModules.size === 0
+    ? 5
+    : (5 *
+        [...requiredModules].filter((item) => validModules.has(item)).length) /
+      requiredModules.size;
 }
 
 function scoreRepositoryMap(
   root,
   sourceFiles,
-  sourceDirectories,
+  moduleDirectories,
   config,
   findings,
 ) {
@@ -896,7 +1190,7 @@ function scoreRepositoryMap(
         "error",
         "MAP_MISSING",
         MAP_PATH,
-        "Repository map is required when source files are present.",
+        "Repository map is required; run the auditor with --generate-map.",
       ),
     );
     return 0;
@@ -929,15 +1223,15 @@ function scoreRepositoryMap(
   }
 
   let score = 0;
-  if (data.schemaVersion === 1) {
-    score += 5;
+  if (data.schemaVersion === MAP_SCHEMA_VERSION) {
+    score += 3;
   } else {
     findings.push(
       finding(
         "error",
         "MAP_SCHEMA_VERSION",
         MAP_PATH,
-        "schemaVersion must be the integer 1.",
+        `schemaVersion must be the integer ${MAP_SCHEMA_VERSION}; regenerate the map.`,
       ),
     );
   }
@@ -951,6 +1245,19 @@ function scoreRepositoryMap(
         "MAP_GENERATED_AT",
         MAP_PATH,
         "generatedAt must be an ISO 8601 timestamp with a timezone.",
+      ),
+    );
+  }
+
+  if (data.generatedBy === MAP_GENERATOR) {
+    score += 2;
+  } else {
+    findings.push(
+      finding(
+        "error",
+        "MAP_GENERATOR",
+        MAP_PATH,
+        `generatedBy must be ${MAP_GENERATOR}; do not maintain the map manually.`,
       ),
     );
   }
@@ -969,18 +1276,14 @@ function scoreRepositoryMap(
     );
   }
 
-  const exemptMapFiles = new Set(Object.keys(config.mapFileExemptions));
-  const expectedFiles = new Set(
-    sourceFiles.filter((sourceFile) => !exemptMapFiles.has(sourceFile)),
+  const expectedFiles = buildExpectedMapFiles(root, sourceFiles, config);
+  const expectedModules = buildExpectedMapModules(
+    root,
+    moduleDirectories,
+    config,
   );
   score += validateMapFiles(data, expectedFiles, findings).score;
-  score += validateNavigationEntries(
-    root,
-    data,
-    new Set(sourceDirectories),
-    config,
-    findings,
-  );
+  score += validateMapModules(root, data, expectedModules, findings);
 
   for (const [filePath, reason] of Object.entries(config.mapFileExemptions)) {
     findings.push(
@@ -1193,7 +1496,7 @@ export function auditRepository(repository, minimumScore) {
       ? config.minScore
       : numberInRange(minimumScore, "min-score", 85, 0, 100);
   const sourceFiles = discoverSourceFiles(root, config);
-  const sourceDirectories = findSourceDirectories(sourceFiles);
+  const moduleDirectories = findModuleDirectories(root, sourceFiles, config);
   const findings = [];
 
   const categories = {
@@ -1203,7 +1506,7 @@ export function auditRepository(repository, minimumScore) {
       (20 *
         scoreModuleGuides(
           root,
-          sourceDirectories,
+          moduleDirectories,
           config,
           findings,
         )) /
@@ -1213,7 +1516,7 @@ export function auditRepository(repository, minimumScore) {
         scoreRepositoryMap(
           root,
           sourceFiles,
-          sourceDirectories,
+          moduleDirectories,
           config,
           findings,
         )) /
@@ -1240,7 +1543,7 @@ export function auditRepository(repository, minimumScore) {
 
   return {
     repository: root,
-    standardVersion: "1.0",
+    standardVersion: "1.1",
     score,
     minimumScore: effectiveMinimum,
     passed: score >= effectiveMinimum && !hasErrors,
@@ -1248,7 +1551,7 @@ export function auditRepository(repository, minimumScore) {
     categories,
     metrics: {
       sourceFiles: sourceFiles.length,
-      sourceDirectories: sourceDirectories.length,
+      moduleDirectories: moduleDirectories.length,
       errors: findings.filter((item) => item.severity === "error").length,
       warnings: findings.filter((item) => item.severity === "warning").length,
       exemptions: findings.filter((item) => item.code.endsWith("_EXEMPT")).length,
@@ -1271,7 +1574,7 @@ function printText(result) {
   );
   console.log(
     `Scope: ${result.metrics.sourceFiles} source file(s), ` +
-      `${result.metrics.sourceDirectories} source directorie(s)`,
+      `${result.metrics.moduleDirectories} documented module directorie(s)`,
   );
   if (result.findings.length === 0) {
     console.log("No findings.");
@@ -1293,6 +1596,7 @@ Audit a repository for coding-agent readability.
 Options:
   --format <text|json>  Report format (default: text)
   --min-score <0-100>   Override the configured passing score
+  --generate-map        Generate .agent/repo-map.json from maintained metadata
   --fingerprint         Print only the current source fingerprint
   --version             Print checker version
   -h, --help            Show this help`);
@@ -1308,6 +1612,7 @@ export function main(argv = process.argv.slice(2)) {
       options: {
         format: { type: "string", default: "text" },
         "min-score": { type: "string" },
+        "generate-map": { type: "boolean", default: false },
         fingerprint: { type: "boolean", default: false },
         version: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
@@ -1334,6 +1639,10 @@ export function main(argv = process.argv.slice(2)) {
     console.error("error: --format must be text or json");
     return 2;
   }
+  if (parsed.values.fingerprint && parsed.values["generate-map"]) {
+    console.error("error: --fingerprint and --generate-map cannot be combined");
+    return 2;
+  }
 
   let minimumScore;
   if (parsed.values["min-score"] !== undefined) {
@@ -1350,6 +1659,11 @@ export function main(argv = process.argv.slice(2)) {
       const config = loadConfig(root);
       const sourceFiles = discoverSourceFiles(root, config);
       console.log(computeSourceFingerprint(root, sourceFiles));
+      return 0;
+    }
+    if (parsed.values["generate-map"]) {
+      const generated = generateRepositoryMap(root);
+      console.log(`Generated ${generated.path}`);
       return 0;
     }
 

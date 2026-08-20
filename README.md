@@ -7,7 +7,7 @@ matter. This toolkit separates:
 
 - working instructions in `AGENTS.md`;
 - system design in `ARCHITECTURE.md`;
-- each source directory's local facts in its own `MODULE.md`;
+- meaningful module-directory facts in `MODULE.md`;
 - machine-readable navigation in `.agent/repo-map.json`; and
 - file facts in the first 50 lines of each source file.
 
@@ -29,6 +29,7 @@ repository's root `AGENTS.md`.
 Node.js 18 or later is required; no npm packages are needed.
 
 ```console
+node check-agent-readability.mjs PATH_TO_REPOSITORY --generate-map
 node check-agent-readability.mjs PATH_TO_REPOSITORY
 node check-agent-readability.mjs PATH_TO_REPOSITORY --format json
 ```

@@ -1,84 +1,55 @@
-# Agent-Friendly Repository Standard v1.0
+# Agent-Friendly Repository Standard v1.1
 
-This standard reduces the context a coding agent needs to understand an
-unfamiliar repository. It separates working instructions from architecture so
-each document has one clear responsibility.
+This standard gives coding agents a short path from repository-level
+instructions to the exact source files relevant to a task.
 
-Companion files:
+## 1. Information Layers
 
-- `CODING_AGENT_PROMPT.md`: complete repository migration prompt.
-- `ROOT_AGENTS_TEMPLATE.md`: template for root agent instructions.
-- `check-agent-readability.mjs`: automated conformance auditor.
+| Artifact | Responsibility |
+|---|---|
+| Root `AGENTS.md` | Global agent workflow, project commands, coding conventions, and documentation update rules |
+| Root `ARCHITECTURE.md` | Project purpose, system context, components, dependency rules, data flow, entry points, and cross-cutting constraints |
+| Module-directory `MODULE.md` | One module's responsibility, boundary, key files, dependencies, and tests |
+| Source-file `@agent-*` header | One file's purpose, public API, invariants, and side effects |
+| `.agent/repo-map.json` | Automatically generated global index of modules and source files |
 
-## 1. Document Ownership
+`AGENTS.md` is global. Do not create nested `AGENTS.md` files. Architecture
+belongs in `ARCHITECTURE.md`, and directory-specific facts belong in
+`MODULE.md`.
 
-| Artifact | Owns | Must not contain |
-|---|---|---|
-| Root `AGENTS.md` | Agent workflow, development and test commands, coding conventions, and documentation update rules | Architecture, component design, data flow, or duplicated module descriptions |
-| Root `ARCHITECTURE.md` | System purpose, context, components, dependency rules, data flow, entry points, and cross-cutting constraints | Agent behavior instructions or task execution procedures |
-| Directory `MODULE.md` | One directory's purpose, responsibilities, key files, dependencies, and tests | Repository-wide architecture or general agent workflow |
-| `.agent/repo-map.json` | Machine-readable paths, module index, entry points, file purposes, and public symbols | Long prose or behavioral instructions |
-| Source-file `@agent-*` header | File-specific purpose, public API, invariants, and side effects | Repository architecture or ordinary private-helper inventories |
-
-When information changes, update the artifact that owns that information. Do
-not copy the same architecture prose into `AGENTS.md`.
-
-## 2. Design Principles
-
-1. **Separate instructions from architecture.** `AGENTS.md` explains how an
-   agent should work; `ARCHITECTURE.md` explains how the system is designed.
-2. **Keep module facts close to code.** Every directory that contains
-   discovered source files, directly or through child directories, uses
-   `MODULE.md`.
-3. **Generate derivable indexes.** File paths and public symbols belong in the
-   repository map and should come from code facts.
-4. **Treat code as the source of truth.** Documentation must not guess about
-   behavior.
-5. **Read indexes before bodies.** Agents should use the repository map and
-   source-file headers to reject irrelevant files before reading them fully.
-6. **Avoid risky compliance refactors.** Use a narrow, justified exemption
-   when generated or legacy code cannot be safely changed.
-7. **Use concrete descriptions.** Do not use placeholders such as "utility
-   code," "business logic," or "handles related operations."
-
-## 3. Required Repository Structure
+## 2. Required Structure
 
 ```text
 repository/
 |-- AGENTS.md
 |-- ARCHITECTURE.md
 |-- .agent/
-|   `-- repo-map.json
+|   `-- repo-map.json             # Generated; never edited manually
 |-- .agent-readability.json       # Optional
 |-- src/
-|   |-- MODULE.md
-|   |-- feature/
-|   |   |-- MODULE.md
-|   |   `-- ...
+|   |-- MODULE.md                 # When src meets the module rule
 |   `-- ...
 `-- ...
 ```
 
-### 3.1 Root `AGENTS.md`
+### 2.1 Root `AGENTS.md`
 
-The root `AGENTS.md` contains operational instructions only. It must contain
-these non-empty sections:
+The root file contains global instructions only and has these non-empty
+sections:
 
-| Canonical section | Accepted headings | Required information |
-|---|---|---|
-| Repository Documents | `Repository Documents`, `Navigation`, `Read First` | Links to `ARCHITECTURE.md`, `.agent/repo-map.json`, and relevant `MODULE.md` files |
-| Development | `Development`, `Local Development` | Installation, startup, and build commands |
-| Testing | `Testing`, `Tests` | Narrow and complete validation commands |
-| Conventions | `Conventions`, `Coding Conventions` | Repository-specific implementation rules |
-| Agent Workflow | `Agent Workflow`, `Workflow` | Required read-before-edit and edit behavior |
-| Documentation Updates | `Documentation Updates`, `Documentation Update Triggers` | Which artifact changes for each kind of code change |
+- `Repository Documents`
+- `Development`
+- `Testing`
+- `Conventions`
+- `Agent Workflow`
+- `Documentation Updates`
 
-Do not place component descriptions, dependency diagrams, data flow, or entry
-point explanations in `AGENTS.md`. Link to `ARCHITECTURE.md` instead.
+It links to `ARCHITECTURE.md`, `.agent/repo-map.json`, and applicable
+`MODULE.md` files. It does not duplicate architecture or module descriptions.
 
-### 3.2 Root `ARCHITECTURE.md`
+### 2.2 Root `ARCHITECTURE.md`
 
-The root `ARCHITECTURE.md` must contain these non-empty sections:
+The architecture document has these non-empty sections:
 
 - `Purpose`
 - `System Context`
@@ -88,13 +59,22 @@ The root `ARCHITECTURE.md` must contain these non-empty sections:
 - `Entry Points`
 - `Cross-Cutting Constraints`
 
-This file contains system facts only. It must not instruct an agent how to run
-tasks, sequence edits, or maintain documentation.
+It contains verified system facts, not instructions for how an agent should
+perform tasks.
 
-### 3.3 Source-Directory `MODULE.md`
+### 2.3 Module `MODULE.md`
 
-Every non-root directory containing discovered source files, either directly
-or anywhere below it, must contain `MODULE.md` with these non-empty sections:
+A non-root directory requires `MODULE.md` when any condition is true:
+
+- it directly contains at least three source files;
+- it is named `src`, `app`, `lib`, `libs`, `packages`, `services`, `modules`,
+  or `components` and recursively contains at least five source files; or
+- it contains a package or build manifest and has source files below it.
+
+This heuristic selects directories that act as meaningful module boundaries
+without creating documentation in every small leaf directory.
+
+Each required `MODULE.md` has these non-empty sections:
 
 - `Purpose`
 - `Responsibilities`
@@ -102,80 +82,17 @@ or anywhere below it, must contain `MODULE.md` with these non-empty sections:
 - `Dependencies`
 - `Tests`
 
-`MODULE.md` documents facts for that directory and its subtree. A child
-directory's `MODULE.md` adds more specific information and does not repeat its
-parent. Repository-wide component relationships remain in `ARCHITECTURE.md`.
+A child module adds local detail instead of repeating its parent.
 
-### 3.4 `.agent/repo-map.json`
+### 2.4 Source-File Header
 
-The repository map is UTF-8 JSON and uses `/` in repository-relative paths:
-
-```json
-{
-  "schemaVersion": 1,
-  "generatedAt": "2026-08-20T00:00:00Z",
-  "sourceFingerprint": "64-character SHA-256",
-  "entryPoints": [
-    {
-      "path": "src/main.py",
-      "purpose": "Starts the application and assembles top-level dependencies"
-    }
-  ],
-  "modules": [
-    {
-      "path": "src/orders",
-      "purpose": "Implements order creation, state transitions, and persistence orchestration",
-      "guide": "src/orders/MODULE.md"
-    }
-  ],
-  "files": [
-    {
-      "path": "src/orders/service.py",
-      "kind": "source",
-      "purpose": "Coordinates order creation and payment reservation while preserving idempotency",
-      "publicSymbols": [
-        "OrderService",
-        "create_order"
-      ]
-    }
-  ]
-}
-```
-
-Requirements:
-
-- `schemaVersion` is the integer `1`.
-- `generatedAt` is an ISO 8601 timestamp with a timezone.
-- `sourceFingerprint` matches the current source fingerprint.
-- `entryPoints` contains at least one runtime, reading, or public API entry.
-- `modules` covers every non-exempt source directory and points to that
-  directory's `MODULE.md`.
-- `files` covers every non-excluded source file.
-- Every `purpose` contains at least eight non-whitespace characters and states
-  a concrete responsibility.
-- `publicSymbols` contains all public or exported classes, functions,
-  interfaces, and constants. Use an empty array when none exist.
-- `kind` normally uses `source`, `test`, `generated`, or `config`.
-
-The auditor calculates `sourceFingerprint` by sorting source paths, normalizing
-paths to `/`, normalizing line endings to `LF`, and hashing each
-`UTF-8 path + NUL + content + NUL` sequence with SHA-256.
-
-```console
-node check-agent-readability.mjs PATH_TO_REPOSITORY --fingerprint
-```
-
-Refresh the repository map after source changes.
-
-## 4. Source-File Agent Headers
-
-Every non-exempt source file must contain a 5-15 line native-language comment
-block within its first 50 lines:
+Every non-exempt source file contains this metadata in a 5-15 line native
+comment block within its first 50 lines:
 
 ```text
 @agent-file
 @agent-purpose: <the file's specific responsibility>
-@agent-public-api: <all public or exported symbols; use none when empty>
+@agent-public-api: <all public or exported symbols, comma-separated; use none when empty>
 @agent-invariants: <constraints that must remain true; use none when empty>
 @agent-side-effects: <I/O, network, database, or global-state effects; use none when empty>
 ```
@@ -194,31 +111,81 @@ Example:
 
 Requirements:
 
-- fields appear in the exact order above;
+- the fields remain in the order shown above;
 - `@agent-purpose` contains at least eight non-whitespace characters;
-- empty public APIs, invariants, and side effects use `none`;
-- `@agent-public-api` matches the file's `publicSymbols` map entry;
-- a shebang, encoding declaration, or legally required copyright header may
-  appear first, but the complete summary remains within the first 50 lines;
-- changes to file purpose, public API, invariants, or side effects update the
-  header in the same change; and
-- only generated files that cannot be edited directly may use
-  `exemptions.fileHeaders`.
+- `none` is used instead of an empty value;
+- ordinary private helpers are not listed;
+- a shebang, encoding declaration, or required copyright header may appear
+  first; and
+- changes to the file's responsibility, public API, invariants, or side
+  effects update the header in the same change.
 
-## 5. Source-File Size
+The header is the maintained source for file metadata. The generated repository
+map copies its purpose and public symbols.
+
+### 2.5 Generated `.agent/repo-map.json`
+
+The map is generated by the auditor:
+
+```console
+node check-agent-readability.mjs PATH_TO_REPOSITORY --generate-map
+```
+
+Do not edit it manually. Schema version 2 has this shape:
+
+```json
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-20T00:00:00.000Z",
+  "generatedBy": "check-agent-readability@1.1.0",
+  "sourceFingerprint": "64-character SHA-256",
+  "modules": [
+    {
+      "path": "src/orders",
+      "purpose": "Implements order state transitions and persistence orchestration.",
+      "guide": "src/orders/MODULE.md"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/orders/service.ts",
+      "kind": "source",
+      "purpose": "Coordinates order creation and payment reservation.",
+      "publicSymbols": [
+        "OrderService",
+        "createOrder"
+      ]
+    }
+  ]
+}
+```
+
+The generator derives:
+
+- module paths and purposes from detected module directories and their
+  `MODULE.md` `Purpose` sections;
+- file paths, purposes, and public symbols from source-file headers;
+- file kind from its path and exemptions; and
+- `sourceFingerprint` from sorted source paths and normalized source content.
+
+The map is rejected when its generator version, fingerprint, paths, purposes,
+or public symbols differ from maintained metadata.
+
+## 3. Source-File Size
 
 Default thresholds:
 
-- recommended maximum: 800 lines;
-- hard maximum: 2,000 lines.
+- 800 lines: recommended maximum;
+- 2,000 lines: hard maximum.
 
-Files over 800 lines produce a warning and lose points. Files over 2,000 lines
-fail unless narrowly exempted. Split files along stable responsibilities and
-testable boundaries, not arbitrary line counts.
+Files between the thresholds produce a warning. Files above the hard maximum
+must be split along a natural, testable responsibility boundary or receive a
+narrow exemption with a concrete reason. Line count alone is not sufficient
+reason to perform an unsafe refactor.
 
-## 6. Optional Configuration
+## 4. Optional Configuration
 
-The repository may create `.agent-readability.json`:
+The root may contain `.agent-readability.json`:
 
 ```json
 {
@@ -230,6 +197,8 @@ The repository may create `.agent-readability.json`:
   "sourceExtensions": [
     ".custom"
   ],
+  "significantDirectoryMinFiles": 3,
+  "significantDirectoryRecursiveFiles": 5,
   "recommendedMaxLines": 800,
   "hardMaxLines": 2000,
   "minScore": 85,
@@ -238,10 +207,10 @@ The repository may create `.agent-readability.json`:
       "src/legacy/parser.py": "Generated grammar output; maintained source is parser.y"
     },
     "moduleGuides": {
-      "src/compat": "Two-file compatibility shim documented by its parent module"
+      "src/compat": "Small compatibility shim documented by its parent module"
     },
     "mapFiles": {
-      "tests/fixtures/huge_generated.py": "Generated fixture with no maintainable public API"
+      "tests/fixtures/generated.py": "Generated fixture excluded from navigation"
     },
     "fileHeaders": {
       "src/generated/schema.ts": "Generated from schema.json; direct edits are overwritten"
@@ -250,51 +219,44 @@ The repository may create `.agent-readability.json`:
 }
 ```
 
-Every exemption uses a repository-relative `/` path and a concrete reason.
-Broad exclusions must not hide a business-code root. `recommendedMaxLines`
-cannot exceed `hardMaxLines`.
+Every exemption is scoped to a specific path and has a concrete reason. Broad
+exclusions must not hide a business-code root.
 
-## 7. Scoring and Passing
+## 5. Scoring and Passing
 
 | Category | Points |
 |---|---:|
 | Root agent instructions | 10 |
 | Root architecture | 15 |
-| Source-directory module guides | 20 |
-| `.agent/repo-map.json` | 25 |
-| Source-file agent headers | 20 |
+| Module guides | 20 |
+| Generated repository map | 25 |
+| Source-file headers | 20 |
 | Source-file size | 10 |
 
-A repository passes when it reaches the configured minimum score, which
-defaults to 85, and has no `error` findings.
+A repository passes when it reaches the configured minimum score, default 85,
+and has no `error` findings.
 
 ```console
+node check-agent-readability.mjs PATH_TO_REPOSITORY --generate-map
 node check-agent-readability.mjs PATH_TO_REPOSITORY
 node check-agent-readability.mjs PATH_TO_REPOSITORY --format json
 ```
 
 Exit codes:
 
-- `0`: pass;
-- `1`: repository does not meet the standard;
-- `2`: invalid path, configuration, or invocation.
+- `0`: success or conforming repository;
+- `1`: repository does not conform;
+- `2`: invalid path, configuration, generation input, or invocation.
 
-## 8. Documentation Update Ownership
+## 6. Update Ownership
 
-| Change | Required update |
+| Change | Maintained artifact |
 |---|---|
-| Source-file responsibility, API, invariant, or side effect changes | That file's `@agent-*` header and matching repository-map file entry |
-| File is added, deleted, renamed, moved, or split | Nearest `MODULE.md`, repository-map `files`, affected entry points, and fingerprint |
-| Module responsibility, dependency, key files, or tests change | That module's `MODULE.md`; update `ARCHITECTURE.md` only when the system-level design also changes |
-| System components, dependency rules, data flow, or entry points change | Root `ARCHITECTURE.md` and matching repository-map entries |
-| Development commands, test commands, conventions, or agent workflow change | Root `AGENTS.md` |
+| File purpose, public API, invariant, or side effect changes | That file's `@agent-*` header |
+| Module responsibility, boundary, key files, dependencies, or tests change | That module's `MODULE.md` |
+| System components, dependency rules, data flow, entry points, or cross-cutting constraints change | Root `ARCHITECTURE.md` |
+| Project commands, coding conventions, agent workflow, or update rules change | Root `AGENTS.md` |
+| Any source header, source file, or module guide changes | Regenerate `.agent/repo-map.json` |
 
-Documentation updates are part of the code change. Do not leave stale
-architecture, paths, symbols, or commands for a later agent.
+The generated map is an output, not a second source of truth.
 
-## 9. Limits of Automated Auditing
-
-The auditor verifies structure, required fields, map coverage, file size, and
-fingerprint freshness. It cannot prove that natural-language descriptions are
-semantically correct. Final review should sample source headers and map entries,
-trace entry-point call chains, and run the documented project commands.

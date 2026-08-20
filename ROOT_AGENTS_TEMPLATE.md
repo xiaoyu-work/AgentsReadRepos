@@ -60,7 +60,7 @@ only when the result or change scope requires it.
 Before editing:
 
 1. Read this file, `ARCHITECTURE.md`, and `.agent/repo-map.json`.
-2. Read the nearest `MODULE.md` for every file in scope.
+2. Read the nearest applicable `MODULE.md` for every file in scope.
 3. Read only the first 50 lines of candidate files and use their `@agent-*`
    headers to decide which files require full inspection.
 4. Confirm relevant callers, dependencies, tests, and invariants in source.
@@ -77,20 +77,20 @@ While editing:
 After editing:
 
 1. Apply the documentation triggers below.
-2. Regenerate the repository-map fingerprint and timestamp after source changes.
+2. Run the repository-map generator after source, source-header, or module-guide changes.
 3. Run the repository readability auditor and relevant project validation.
 
 ## Documentation Updates
 
 | Change | Required update |
 |---|---|
-| Source-file purpose, API, invariant, or side effect changes | Update that file's `@agent-*` header and matching repository-map entry. |
-| Public or exported symbol changes | Update `@agent-public-api` and `publicSymbols`. |
-| File is added, deleted, renamed, moved, or split | Update the nearest `MODULE.md`, repository-map paths and entry points, then regenerate the fingerprint. |
+| Source-file purpose, API, invariant, or side effect changes | Update that file's `@agent-*` header, then regenerate the repository map. |
+| Public or exported symbol changes | Update `@agent-public-api`, then regenerate the repository map. |
+| File is added, deleted, renamed, moved, or split | Update the nearest applicable `MODULE.md`, then regenerate the repository map. |
 | Module responsibility, dependencies, key files, or tests change | Update that module's `MODULE.md`. Update `ARCHITECTURE.md` only when the system-level design also changes. |
-| Components, dependency rules, data flow, entry points, or cross-cutting constraints change | Update `ARCHITECTURE.md` and matching repository-map entries. |
+| Components, dependency rules, data flow, entry points, or cross-cutting constraints change | Update `ARCHITECTURE.md`. |
 | Development commands, test commands, conventions, or agent workflow change | Update this `AGENTS.md`. |
 
 Documentation updates are part of the code change. Do not leave stale
 architecture, paths, symbols, responsibilities, or commands for a later agent.
-
+Never edit `.agent/repo-map.json` manually.

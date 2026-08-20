@@ -1,52 +1,50 @@
 # Repository Agent-Readability Migration Prompt
 
-Copy the complete fenced block below into a coding agent and run it from the
-target repository root. Replace `<CHECKER_PATH>` with the absolute path to
-`check-agent-readability.mjs`. The auditor requires Node.js 18 or later and no
-third-party npm packages.
+Copy the complete block below into a coding agent running from the target
+repository root. Replace `<CHECKER_PATH>` with the absolute path to
+`check-agent-readability.mjs`.
 
 ```text
-Migrate the current repository so future coding agents can understand it accurately with less searching and less context consumption.
+Migrate the current repository so future coding agents can identify relevant modules and files without scanning the entire codebase.
 
-Keep document responsibilities strictly separated:
-- Root AGENTS.md contains agent workflow, commands, conventions, and documentation update rules only.
-- Root ARCHITECTURE.md contains system architecture only.
-- Every source-directory MODULE.md contains local facts for that directory and its subtree.
-- .agent/repo-map.json contains the machine-readable index.
-- Source-file @agent-* headers contain file-specific facts.
-
-Do not place architecture, component descriptions, dependency diagrams, data flow, or entry-point explanations in AGENTS.md. AGENTS.md links to ARCHITECTURE.md instead.
+Use these information layers:
+- Root AGENTS.md: global agent prompt, project commands, conventions, and update rules.
+- Root ARCHITECTURE.md: project-wide architecture only.
+- MODULE.md: local facts for meaningful module directories only.
+- Source-file @agent-* header: file-specific purpose, public API, invariants, and side effects.
+- .agent/repo-map.json: generated global index; never edit it manually.
 
 Final goals:
-1. Create or improve the root AGENTS.md as an instruction-only document.
-2. Create or improve the root ARCHITECTURE.md as the architecture source of truth.
-3. Create or improve MODULE.md in every non-root directory that contains source files directly or anywhere below it.
-4. Create a complete and accurate .agent/repo-map.json.
-5. Add a fixed agent summary within the first 50 lines of every non-exempt source file.
-6. Handle oversized source files safely or use the smallest justified exemption.
-7. Pass the Agent-Friendly Repository Standard v1.0 auditor.
+1. Create or improve the single root AGENTS.md.
+2. Create or improve the root ARCHITECTURE.md.
+3. Create or improve MODULE.md only in detected module directories.
+4. Add a valid @agent-* header to every non-exempt source file.
+5. Safely handle oversized files.
+6. Generate .agent/repo-map.json with the auditor.
+7. Pass the Agent-Friendly Repository Standard v1.1 auditor.
 
-Operating rules:
-- Investigate the repository fully before editing. Use symbol search, language services, manifests, existing documentation, and tests. Do not infer behavior from filenames alone.
-- Preserve verified content from existing documentation. Move architecture facts found in AGENTS.md into ARCHITECTURE.md instead of discarding or duplicating them.
-- Do not change product behavior, public APIs, persistence formats, or network protocols.
+Hard migration rules:
+- Investigate code, symbols, manifests, existing documentation, and tests before writing descriptions.
+- Preserve product behavior, public APIs, persistence formats, and network protocols.
 - Preserve the existing directory structure. Do not move, rename, merge, or reorganize existing files or directories.
-- The only permitted structural additions are files extracted into the original source file's directory and the required AGENTS.md, ARCHITECTURE.md, MODULE.md, .agent/repo-map.json, and optional .agent-readability.json files.
-- Work directory by directory and process only one source file at a time. Complete that file's split, references, relevant validation, header, module documentation, and map entry before starting another file.
+- New files extracted from a source file must remain in that source file's directory.
+- Work on one directory at a time and one source file at a time.
+- Complete one file's split, references, validation, header, and affected documentation before starting another file.
 - Do not batch refactors across multiple files or directories.
-- Write concrete descriptions supported by code. Never use placeholders such as "utility code," "business logic," or "handles related operations."
-- Do not pass the auditor through broad exclusions, false descriptions, empty sections, or meaningless exemptions.
-- Do not modify dependencies, generated outputs, or third-party code unless the task genuinely requires it.
-- Follow the repository's existing formatting and naming. Use English for the agent-readable files created by this migration.
+- Preserve verified user documentation and unrelated working-tree changes.
+- Do not use broad exclusions, false descriptions, empty sections, or meaningless exemptions to pass the auditor.
+- Use English for agent-readable artifacts created by this migration.
 
-1. Build a fact inventory
-- Identify languages, build systems, package boundaries, runtime and public API entry points, primary data flows, external systems, and project commands.
+1. Build a repository fact inventory
+- Identify languages, build systems, package boundaries, runtime and public API entry points, components, dependency directions, primary data flows, external systems, and project commands.
 - List source files and identify public or exported classes, functions, interfaces, and constants.
 - Separate production code, tests, configuration, generated outputs, dependencies, and build artifacts.
-- Verify existing architecture statements against code.
+- Verify existing documentation against source instead of trusting filenames or stale prose.
 
 2. Create or improve root AGENTS.md
-Use ROOT_AGENTS_TEMPLATE.md when available. AGENTS.md must contain these non-empty sections:
+Use ROOT_AGENTS_TEMPLATE.md when available.
+
+It must contain:
 - Repository Documents
 - Development
 - Testing
@@ -54,9 +52,9 @@ Use ROOT_AGENTS_TEMPLATE.md when available. AGENTS.md must contain these non-emp
 - Agent Workflow
 - Documentation Updates
 
-Repository Documents links to ARCHITECTURE.md, .agent/repo-map.json, and relevant MODULE.md files.
-
-AGENTS.md must not explain system purpose, component design, dependency direction, data flow, or entry points. Put those facts in ARCHITECTURE.md.
+AGENTS.md is the single global prompt. Do not create nested AGENTS.md files.
+Link to ARCHITECTURE.md, .agent/repo-map.json, and applicable MODULE.md files.
+Do not put component architecture, dependency diagrams, data flow, or detailed module descriptions in AGENTS.md.
 
 3. Create or improve root ARCHITECTURE.md
 It must contain:
@@ -68,81 +66,53 @@ It must contain:
 - Entry Points
 - Cross-Cutting Constraints
 
-Describe verified system facts and link components to their MODULE.md files. Do not include agent workflow, edit sequencing, test-selection instructions, or documentation maintenance rules.
+Document verified project-wide architecture only. Do not include agent workflow, edit sequencing, or documentation-maintenance instructions.
 
-4. Create or improve source-directory MODULE.md files
-Every non-root directory containing source files directly or anywhere below it must contain MODULE.md.
+4. Create or improve MODULE.md only for module directories
+A non-root directory requires MODULE.md when any condition is true:
+- it directly contains at least three source files;
+- it is named src, app, lib, libs, packages, services, modules, or components and recursively contains at least five source files; or
+- it contains a package or build manifest and has source files below it.
 
-Each MODULE.md must contain:
+Each required MODULE.md must contain:
 - Purpose
 - Responsibilities
 - Key Files
 - Dependencies
 - Tests
 
-Keep content local to that directory and its subtree. Child MODULE.md files add more specific information instead of repeating their parents. Repository-wide component relationships belong in ARCHITECTURE.md. Only generated or non-maintainable directory trees may use a narrow exemptions.moduleGuides entry with a concrete reason.
+Keep facts local to that module. Child modules add detail instead of repeating their parents. Small leaf directories inherit their nearest parent module guide.
 
-5. Create .agent/repo-map.json
-Use this structure:
-{
-  "schemaVersion": 1,
-  "generatedAt": "<timezone-aware ISO 8601 timestamp>",
-  "sourceFingerprint": "<SHA-256 printed by the auditor>",
-  "entryPoints": [
-    {"path": "<relative path>", "purpose": "<specific purpose>"}
-  ],
-  "modules": [
-    {"path": "<directory>", "purpose": "<specific responsibility>", "guide": "<directory>/MODULE.md"}
-  ],
-  "files": [
-    {
-      "path": "<source-file relative path>",
-      "kind": "source|test|generated|config",
-      "purpose": "<the file's unique responsibility>",
-      "publicSymbols": ["<public or exported symbol>"]
-    }
-  ]
-}
-
-Requirements:
-- Use / and repository-relative paths.
-- files covers every non-excluded source file.
-- modules covers every non-exempt source directory and points to its MODULE.md.
-- entryPoints contains at least one runtime, reading, or public API entry.
-- purpose contains at least eight non-whitespace characters and distinguishes adjacent files.
-- publicSymbols contains all public or exported symbols; use [] when none exist.
-- Prefer ASTs, symbol tools, and verified documentation over unreliable regular-expression guesses.
-
-6. Add source-file agent headers one file at a time
-Add this metadata within each source file's first 50 lines using native comment syntax:
+5. Add source-file headers one file at a time
+Within the first 50 lines of every non-exempt source file, add a 5-15 line native comment block:
 
 @agent-file
-@agent-purpose: <specific file responsibility>
-@agent-public-api: <all public or exported symbols; use none when empty>
+@agent-purpose: <specific responsibility with at least eight non-whitespace characters>
+@agent-public-api: <all public or exported symbols, comma-separated; use none when empty>
 @agent-invariants: <important constraints; use none when empty>
 @agent-side-effects: <I/O, network, database, or global-state effects; use none when empty>
 
-Keep the fields in this exact order within no more than 15 lines. A shebang, encoding declaration, or required copyright header may appear first. Keep @agent-public-api consistent with the repository map. Only generated files that cannot be edited directly may use exemptions.fileHeaders.
+Keep fields in this exact order. Do not list ordinary private helpers. A shebang, encoding declaration, or legally required copyright header may appear first.
 
-Process one file completely before starting the next file.
+The header is the maintained source for file metadata. Do not manually duplicate its purpose or public symbols into repo-map.json.
 
-7. Control source-file size
-- 800 lines or fewer is recommended.
-- 801-2,000 lines produces a warning and requires checking for a natural split boundary.
-- More than 2,000 lines must be split safely or receive a specific exemptions.oversizedFiles entry.
+6. Handle oversized source files
+- 800 lines or fewer: no split required.
+- 801-2,000 lines: inspect for a natural, testable responsibility boundary; splitting is optional.
+- More than 2,000 lines: split safely or add a narrow exemptions.oversizedFiles entry with a concrete reason.
 
 Required split sequence:
-1. Select one directory and do not modify other directories yet.
-2. Select one oversized file and do not split other files yet.
-3. Extract independent responsibilities into new files in the original file's directory.
+1. Select one directory; leave other directories unchanged.
+2. Select one oversized source file; do not split another file yet.
+3. Extract only independent responsibilities into new files in the original directory.
 4. Repair related imports, exports, registrations, and test references.
 5. Run the narrowest existing validation covering that file.
-6. Update the file header, local MODULE.md, repository map, and fingerprint.
-7. Finish that file before processing the next file; finish the directory before entering another directory.
+6. Update the changed files' headers and affected MODULE.md or ARCHITECTURE.md.
+7. Finish the file before processing another file; finish the directory before entering another directory.
 
-Never accumulate multiple file or directory splits into one broad refactor.
+Never split code mechanically to satisfy a line count. Use a justified exemption when tests or natural boundaries are insufficient for a safe refactor.
 
-8. Configure only necessary exemptions
+7. Configure only necessary exemptions
 Create .agent-readability.json only when needed:
 {
   "version": 1,
@@ -150,32 +120,38 @@ Create .agent-readability.json only when needed:
     "oversizedFiles": {"path/to/file": "specific reason"},
     "moduleGuides": {"path/to/directory": "specific reason"},
     "mapFiles": {"path/to/file": "specific reason"},
-    "fileHeaders": {"path/to/generated-file": "generation source and why direct edits are impossible"}
+    "fileHeaders": {"path/to/generated-file": "generation source and why direct edits are overwritten"}
   }
 }
 
 Keep every exemption scoped to one path. Never exclude an entire business-code root.
 
+8. Generate the repository map
+After source headers and module guides are complete, run:
+
+node "<CHECKER_PATH>" . --generate-map
+
+This command generates .agent/repo-map.json from MODULE.md Purpose sections and source-file headers. Never edit the generated JSON manually. Regenerate it after any source, source header, or MODULE.md change.
+
 9. Validate and iterate
-1. Run narrow relevant project validation to establish a baseline.
-2. Run:
-   node "<CHECKER_PATH>" . --fingerprint
-3. Put the output in repo-map.json as sourceFingerprint and update generatedAt.
-4. Run:
+1. Run:
    node "<CHECKER_PATH>" .
-5. Fix every error and reach at least the default score of 85. Do not lower minScore merely to pass.
-6. If source changed, run the existing tests, type checks, or builds covering that behavior.
-7. Run the auditor again and confirm that the fingerprint is current.
+2. Fix every error and reach at least the default score of 85. Do not lower minScore merely to pass.
+3. When source code changed, run the existing tests, type checks, or builds covering the changed behavior.
+4. If a fix changed source or maintained metadata, run --generate-map again.
+5. Run the auditor one final time.
 
 Before completion:
-- Compare at least three map entries and file headers with source.
-- Trace at least one call chain from every entry point and verify ARCHITECTURE.md.
-- Confirm documented commands and MODULE.md paths.
-- Confirm AGENTS.md contains instructions only and ARCHITECTURE.md contains architecture only.
+- Compare at least three source headers with source behavior.
+- Compare each MODULE.md with its directory boundary and dependencies.
+- Trace at least one call chain from every documented architecture entry point.
+- Confirm AGENTS.md contains global instructions, ARCHITECTURE.md contains project architecture, and MODULE.md contains local module facts.
+- Confirm repo-map.json was generated rather than manually maintained.
 
 The final response should state only:
-- which agent instructions, architecture, module guides, map entries, and headers were created or updated;
+- which maintained agent instructions, architecture, module guides, and headers changed;
 - which exemptions remain and why;
-- the auditor's final score; and
+- the final auditor score; and
 - when source changed, which relevant validations ran.
 ```
+
