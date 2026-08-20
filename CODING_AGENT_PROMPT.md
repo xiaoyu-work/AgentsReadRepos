@@ -11,7 +11,7 @@ Migrate the current repository so future coding agents can understand it accurat
 Keep document responsibilities strictly separated:
 - Root AGENTS.md contains agent workflow, commands, conventions, and documentation update rules only.
 - Root ARCHITECTURE.md contains system architecture only.
-- Significant-directory MODULE.md files contain local module facts only.
+- Every source-directory MODULE.md contains local facts for that directory and its subtree.
 - .agent/repo-map.json contains the machine-readable index.
 - Source-file @agent-* headers contain file-specific facts.
 
@@ -20,7 +20,7 @@ Do not place architecture, component descriptions, dependency diagrams, data flo
 Final goals:
 1. Create or improve the root AGENTS.md as an instruction-only document.
 2. Create or improve the root ARCHITECTURE.md as the architecture source of truth.
-3. Create or improve MODULE.md in every significant source directory.
+3. Create or improve MODULE.md in every non-root directory that contains source files directly or anywhere below it.
 4. Create a complete and accurate .agent/repo-map.json.
 5. Add a fixed agent summary within the first 50 lines of every non-exempt source file.
 6. Handle oversized source files safely or use the smallest justified exemption.
@@ -59,7 +59,7 @@ Repository Documents links to ARCHITECTURE.md, .agent/repo-map.json, and relevan
 AGENTS.md must not explain system purpose, component design, dependency direction, data flow, or entry points. Put those facts in ARCHITECTURE.md.
 
 3. Create or improve root ARCHITECTURE.md
-Use ARCHITECTURE_TEMPLATE.md when available. It must contain:
+It must contain:
 - Purpose
 - System Context
 - Components
@@ -70,11 +70,8 @@ Use ARCHITECTURE_TEMPLATE.md when available. It must contain:
 
 Describe verified system facts and link components to their MODULE.md files. Do not include agent workflow, edit sequencing, test-selection instructions, or documentation maintenance rules.
 
-4. Create or improve significant-directory MODULE.md files
-A non-root directory is significant when any condition is true:
-- it directly contains at least three source files;
-- it is named src, app, lib, libs, packages, services, modules, or components and recursively contains at least five source files; or
-- it contains package.json, pyproject.toml, go.mod, Cargo.toml, pom.xml, *.csproj, or an equivalent build manifest and has source files below it.
+4. Create or improve source-directory MODULE.md files
+Every non-root directory containing source files directly or anywhere below it must contain MODULE.md.
 
 Each MODULE.md must contain:
 - Purpose
@@ -83,7 +80,7 @@ Each MODULE.md must contain:
 - Dependencies
 - Tests
 
-Keep content local to that directory. Repository-wide component relationships belong in ARCHITECTURE.md. If a directory genuinely needs no MODULE.md, add one narrow exemptions.moduleGuides entry with a concrete reason.
+Keep content local to that directory and its subtree. Child MODULE.md files add more specific information instead of repeating their parents. Repository-wide component relationships belong in ARCHITECTURE.md. Only generated or non-maintainable directory trees may use a narrow exemptions.moduleGuides entry with a concrete reason.
 
 5. Create .agent/repo-map.json
 Use this structure:
@@ -110,7 +107,7 @@ Use this structure:
 Requirements:
 - Use / and repository-relative paths.
 - files covers every non-excluded source file.
-- modules covers every non-exempt significant directory and points to its MODULE.md.
+- modules covers every non-exempt source directory and points to its MODULE.md.
 - entryPoints contains at least one runtime, reading, or public API entry.
 - purpose contains at least eight non-whitespace characters and distinguishes adjacent files.
 - publicSymbols contains all public or exported symbols; use [] when none exist.
@@ -182,4 +179,3 @@ The final response should state only:
 - the auditor's final score; and
 - when source changed, which relevant validations ran.
 ```
-

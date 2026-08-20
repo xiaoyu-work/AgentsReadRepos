@@ -3,7 +3,7 @@
 /**
  * @agent-file
  * @agent-purpose: Audits repositories against Agent-Friendly Repository Standard v1.0.
- * @agent-public-api: TOOL_VERSION, ConfigError, loadConfig, discoverSourceFiles, computeSourceFingerprint, findSignificantDirectories, auditRepository, main
+ * @agent-public-api: TOOL_VERSION, ConfigError, loadConfig, discoverSourceFiles, computeSourceFingerprint, findSourceDirectories, auditRepository, main
  * @agent-invariants: Audit operations are read-only and use repository-relative normalized paths.
  * @agent-side-effects: Reads target files and writes reports to stdout or stderr; never modifies the target.
  */
@@ -99,32 +99,6 @@ const DEFAULT_EXCLUDE_PATTERNS = [
   "*_pb2.py",
   "*_pb2_grpc.py",
 ];
-
-const SOURCE_ROOT_NAMES = new Set([
-  "app",
-  "components",
-  "lib",
-  "libs",
-  "modules",
-  "packages",
-  "services",
-  "src",
-]);
-
-const MANIFEST_NAMES = new Set([
-  "Cargo.toml",
-  "Gemfile",
-  "build.gradle",
-  "build.gradle.kts",
-  "composer.json",
-  "go.mod",
-  "mix.exs",
-  "package.json",
-  "pom.xml",
-  "pyproject.toml",
-  "settings.gradle",
-  "settings.gradle.kts",
-]);
 
 const ROOT_AGENT_SECTIONS = {
   "Repository Documents": ["repository documents", "navigation", "read first"],
@@ -312,16 +286,6 @@ export function loadConfig(repositoryRoot) {
     sourceExtensions.add(normalized.startsWith(".") ? normalized : `.${normalized}`);
   }
 
-  const significantDirectoryMinFiles = positiveInteger(
-    raw.significantDirectoryMinFiles,
-    "significantDirectoryMinFiles",
-    3,
-  );
-  const significantDirectoryRecursiveFiles = positiveInteger(
-    raw.significantDirectoryRecursiveFiles,
-    "significantDirectoryRecursiveFiles",
-    5,
-  );
   const recommendedMaxLines = positiveInteger(
     raw.recommendedMaxLines,
     "recommendedMaxLines",
@@ -340,8 +304,6 @@ export function loadConfig(repositoryRoot) {
   return {
     excludePatterns,
     sourceExtensions,
-    significantDirectoryMinFiles,
-    significantDirectoryRecursiveFiles,
     recommendedMaxLines,
     hardMaxLines,
     minScore: numberInRange(raw.minScore, "minScore", 85, 0, 100),
@@ -463,55 +425,13 @@ export function computeSourceFingerprint(repositoryRoot, sourceFiles) {
   return digest.digest("hex");
 }
 
-function increment(map, key) {
-  map.set(key, (map.get(key) ?? 0) + 1);
-}
-
-function directoryHasManifest(root, relativeDirectory) {
-  const directory = absolutePath(root, relativeDirectory);
-  return fs.readdirSync(directory, { withFileTypes: true }).some((entry) => {
-    if (!entry.isFile()) {
-      return false;
-    }
-    return (
-      MANIFEST_NAMES.has(entry.name) ||
-      entry.name.endsWith(".csproj") ||
-      entry.name.endsWith(".fsproj")
-    );
-  });
-}
-
-export function findSignificantDirectories(repositoryRoot, sourceFiles, config) {
-  const root = path.resolve(repositoryRoot);
-  const directCounts = new Map();
-  const recursiveCounts = new Map();
-
+export function findSourceDirectories(sourceFiles) {
+  const result = new Set();
   for (const sourceFile of sourceFiles) {
     let parent = path.posix.dirname(sourceFile);
-    if (parent !== ".") {
-      increment(directCounts, parent);
-    }
     while (parent !== ".") {
-      increment(recursiveCounts, parent);
+      result.add(parent);
       parent = path.posix.dirname(parent);
-    }
-  }
-
-  const result = new Set();
-  for (const [directory, count] of directCounts) {
-    if (count >= config.significantDirectoryMinFiles) {
-      result.add(directory);
-    }
-  }
-  for (const [directory, count] of recursiveCounts) {
-    if (
-      SOURCE_ROOT_NAMES.has(path.posix.basename(directory).toLowerCase()) &&
-      count >= config.significantDirectoryRecursiveFiles
-    ) {
-      result.add(directory);
-    }
-    if (count > 0 && directoryHasManifest(root, directory)) {
-      result.add(directory);
     }
   }
   return [...result].sort();
@@ -695,7 +615,7 @@ function scoreModuleGuides(root, directories, config, findings) {
           "error",
           "MODULE_GUIDE_MISSING",
           guideRelative,
-          "Significant directory requires a MODULE.md.",
+          "Every source-containing directory requires a MODULE.md.",
         ),
       );
       continue;
@@ -850,7 +770,7 @@ function validateMapFiles(data, expectedFiles, findings) {
 function validateNavigationEntries(
   root,
   data,
-  significantDirectories,
+  sourceDirectories,
   config,
   findings,
 ) {
@@ -893,7 +813,7 @@ function validateNavigationEntries(
   const modules = data.modules;
   const exemptDirectories = new Set(Object.keys(config.moduleGuideExemptions));
   const requiredModules = new Set(
-    [...significantDirectories].filter((item) => !exemptDirectories.has(item)),
+    [...sourceDirectories].filter((item) => !exemptDirectories.has(item)),
   );
   const validModules = new Set();
 
@@ -937,7 +857,7 @@ function validateNavigationEntries(
           "error",
           "MAP_MODULE_COVERAGE",
           MAP_PATH,
-          `Missing significant module(s): ${missingModules.join(", ")}`,
+          `Missing source-directory module(s): ${missingModules.join(", ")}`,
         ),
       );
     }
@@ -954,7 +874,7 @@ function validateNavigationEntries(
 function scoreRepositoryMap(
   root,
   sourceFiles,
-  significantDirectories,
+  sourceDirectories,
   config,
   findings,
 ) {
@@ -1057,7 +977,7 @@ function scoreRepositoryMap(
   score += validateNavigationEntries(
     root,
     data,
-    new Set(significantDirectories),
+    new Set(sourceDirectories),
     config,
     findings,
   );
@@ -1273,11 +1193,7 @@ export function auditRepository(repository, minimumScore) {
       ? config.minScore
       : numberInRange(minimumScore, "min-score", 85, 0, 100);
   const sourceFiles = discoverSourceFiles(root, config);
-  const significantDirectories = findSignificantDirectories(
-    root,
-    sourceFiles,
-    config,
-  );
+  const sourceDirectories = findSourceDirectories(sourceFiles);
   const findings = [];
 
   const categories = {
@@ -1287,7 +1203,7 @@ export function auditRepository(repository, minimumScore) {
       (20 *
         scoreModuleGuides(
           root,
-          significantDirectories,
+          sourceDirectories,
           config,
           findings,
         )) /
@@ -1297,7 +1213,7 @@ export function auditRepository(repository, minimumScore) {
         scoreRepositoryMap(
           root,
           sourceFiles,
-          significantDirectories,
+          sourceDirectories,
           config,
           findings,
         )) /
@@ -1332,7 +1248,7 @@ export function auditRepository(repository, minimumScore) {
     categories,
     metrics: {
       sourceFiles: sourceFiles.length,
-      significantDirectories: significantDirectories.length,
+      sourceDirectories: sourceDirectories.length,
       errors: findings.filter((item) => item.severity === "error").length,
       warnings: findings.filter((item) => item.severity === "warning").length,
       exemptions: findings.filter((item) => item.code.endsWith("_EXEMPT")).length,
@@ -1355,7 +1271,7 @@ function printText(result) {
   );
   console.log(
     `Scope: ${result.metrics.sourceFiles} source file(s), ` +
-      `${result.metrics.significantDirectories} significant directorie(s)`,
+      `${result.metrics.sourceDirectories} source directorie(s)`,
   );
   if (result.findings.length === 0) {
     console.log("No findings.");

@@ -7,7 +7,7 @@ matter. This toolkit separates:
 
 - working instructions in `AGENTS.md`;
 - system design in `ARCHITECTURE.md`;
-- directory facts in `MODULE.md`;
+- each source directory's local facts in its own `MODULE.md`;
 - machine-readable navigation in `.agent/repo-map.json`; and
 - file facts in the first 50 lines of each source file.
 
@@ -21,8 +21,8 @@ Agents can narrow their search before reading complete files.
 3. Give the complete prompt to a coding agent running from the target
    repository root.
 
-Use `ROOT_AGENTS_TEMPLATE.md`, `ARCHITECTURE_TEMPLATE.md`, and
-`MODULE_TEMPLATE.md` as optional starting templates.
+Use `ROOT_AGENTS_TEMPLATE.md` as an optional starting point for the target
+repository's root `AGENTS.md`.
 
 ## How to Validate
 

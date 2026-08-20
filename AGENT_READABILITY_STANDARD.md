@@ -8,8 +8,6 @@ Companion files:
 
 - `CODING_AGENT_PROMPT.md`: complete repository migration prompt.
 - `ROOT_AGENTS_TEMPLATE.md`: template for root agent instructions.
-- `ARCHITECTURE_TEMPLATE.md`: template for repository architecture.
-- `MODULE_TEMPLATE.md`: template for significant-directory documentation.
 - `check-agent-readability.mjs`: automated conformance auditor.
 
 ## 1. Document Ownership
@@ -29,7 +27,8 @@ not copy the same architecture prose into `AGENTS.md`.
 
 1. **Separate instructions from architecture.** `AGENTS.md` explains how an
    agent should work; `ARCHITECTURE.md` explains how the system is designed.
-2. **Keep module facts close to code.** Significant directories use
+2. **Keep module facts close to code.** Every directory that contains
+   discovered source files, directly or through child directories, uses
    `MODULE.md`.
 3. **Generate derivable indexes.** File paths and public symbols belong in the
    repository map and should come from code facts.
@@ -52,7 +51,10 @@ repository/
 |   `-- repo-map.json
 |-- .agent-readability.json       # Optional
 |-- src/
-|   |-- MODULE.md                 # Required when src is significant
+|   |-- MODULE.md
+|   |-- feature/
+|   |   |-- MODULE.md
+|   |   `-- ...
 |   `-- ...
 `-- ...
 ```
@@ -89,19 +91,10 @@ The root `ARCHITECTURE.md` must contain these non-empty sections:
 This file contains system facts only. It must not instruct an agent how to run
 tasks, sequence edits, or maintain documentation.
 
-### 3.3 Significant-Directory `MODULE.md`
+### 3.3 Source-Directory `MODULE.md`
 
-A non-root directory is significant when any condition is true:
-
-- it directly contains at least three source files;
-- it is named `src`, `app`, `lib`, `libs`, `packages`, `services`, `modules`,
-  or `components` and recursively contains at least five source files; or
-- it contains a common build manifest such as `package.json`,
-  `pyproject.toml`, `go.mod`, `Cargo.toml`, `pom.xml`, or `*.csproj`, and has
-  source files below it.
-
-Every significant directory must contain `MODULE.md` with these non-empty
-sections:
+Every non-root directory containing discovered source files, either directly
+or anywhere below it, must contain `MODULE.md` with these non-empty sections:
 
 - `Purpose`
 - `Responsibilities`
@@ -109,8 +102,9 @@ sections:
 - `Dependencies`
 - `Tests`
 
-`MODULE.md` documents local module facts. Repository-wide component
-relationships remain in `ARCHITECTURE.md`.
+`MODULE.md` documents facts for that directory and its subtree. A child
+directory's `MODULE.md` adds more specific information and does not repeat its
+parent. Repository-wide component relationships remain in `ARCHITECTURE.md`.
 
 ### 3.4 `.agent/repo-map.json`
 
@@ -154,7 +148,7 @@ Requirements:
 - `generatedAt` is an ISO 8601 timestamp with a timezone.
 - `sourceFingerprint` matches the current source fingerprint.
 - `entryPoints` contains at least one runtime, reading, or public API entry.
-- `modules` covers every non-exempt significant directory and points to that
+- `modules` covers every non-exempt source directory and points to that
   directory's `MODULE.md`.
 - `files` covers every non-excluded source file.
 - Every `purpose` contains at least eight non-whitespace characters and states
@@ -236,8 +230,6 @@ The repository may create `.agent-readability.json`:
   "sourceExtensions": [
     ".custom"
   ],
-  "significantDirectoryMinFiles": 3,
-  "significantDirectoryRecursiveFiles": 5,
   "recommendedMaxLines": 800,
   "hardMaxLines": 2000,
   "minScore": 85,
@@ -268,7 +260,7 @@ cannot exceed `hardMaxLines`.
 |---|---:|
 | Root agent instructions | 10 |
 | Root architecture | 15 |
-| Significant-directory module guides | 20 |
+| Source-directory module guides | 20 |
 | `.agent/repo-map.json` | 25 |
 | Source-file agent headers | 20 |
 | Source-file size | 10 |
@@ -306,4 +298,3 @@ The auditor verifies structure, required fields, map coverage, file size, and
 fingerprint freshness. It cannot prove that natural-language descriptions are
 semantically correct. Final review should sample source headers and map entries,
 trace entry-point call chains, and run the documented project commands.
-
