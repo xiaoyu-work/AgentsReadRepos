@@ -1,167 +1,173 @@
 # Repository Agent-Readability Migration Prompt
 
-把下面代码块中的内容作为一个完整 Prompt 交给 coding agent，并让它在目标仓库根目录运行。若检查器不在目标仓库中，请把 `<CHECKER_PATH>` 替换为本目录中 `check-agent-readability.mjs` 的绝对路径。检查器需要 Node.js 18 或更高版本，不依赖第三方 npm 包。
+Copy the complete fenced block below into a coding agent and run it from the
+target repository root. If the auditor is not inside the target repository,
+replace `<CHECKER_PATH>` with the absolute path to
+`check-agent-readability.mjs` in this toolkit. The auditor requires Node.js 18
+or later and has no third-party npm dependencies.
 
 ```text
-你正在改造当前仓库，使后续 coding agent 能以更少的检索和上下文快速、准确地理解代码。
+Migrate the current repository so future coding agents can understand it accurately with less searching and less context consumption.
 
-最终目标：
-1. 创建或完善根目录 AGENTS.md。
-2. 为每个重要源码目录创建或完善 AGENTS.md。
-3. 创建准确且完整的 .agent/repo-map.json。
-4. 为每个未豁免源文件增加前 50 行内的固定格式 agent 摘要。
-5. 处理超大源文件：安全时按职责重构；缺乏测试保护或属于生成代码时使用有具体理由的最小豁免。
-6. 使用 Agent-Friendly Repository Standard v1.0 的检查器达到通过状态。
+Final goals:
+1. Create or improve the root AGENTS.md.
+2. Create or improve AGENTS.md in every significant source directory.
+3. Create a complete and accurate .agent/repo-map.json.
+4. Add a fixed agent summary within the first 50 lines of every non-exempt source file.
+5. Handle oversized source files by safely splitting responsibilities, or use the smallest justified exemption when tests are insufficient or the file is generated.
+6. Pass the Agent-Friendly Repository Standard v1.0 auditor.
 
-工作规则：
-- 先完整调查，再编辑。使用仓库已有的符号搜索、语言服务、构建清单和测试，不要仅凭文件名猜测用途。
-- 尊重现有 AGENTS.md、README 和架构文档；合并有效内容，不要无理由覆盖用户文档。
-- 不改变产品行为、公共 API、持久化格式或网络协议，除非安全拆分超大文件确实需要，并且已有测试能够验证等价性。
-- 保持用户仓库现有目录结构。不得移动、重命名、合并或重新组织现有目录和文件。
-- 允许的结构变化只有两类：在原源文件所在目录内拆分该文件；增加 AGENTS.md、.agent/repo-map.json 或本标准要求的其他 agent 可读文件。
-- 重构必须按目录顺序进行，并且一次只处理一个源文件。完成该文件的拆分、引用修复、相关验证和文档更新后，才能处理下一个文件。
-- 不得同时批量拆分多个文件，不得跨多个目录进行一次性重构。
-- 每个未豁免源文件必须在前 50 行加入固定格式 agent 摘要，使后续 agent 无需读取全文就能判断该文件是否相关。
-- 文件头列出全部公开或导出符号，但不复制普通私有辅助方法清单；公开符号必须与 repo-map.json 保持一致。
-- 描述必须具体并可由代码验证。禁止使用“处理相关逻辑”“工具方法”“业务模块”等占位描述。
-- 不要通过广泛 exclude、虚假 purpose、空章节或无意义豁免来让检查器通过。
-- 不修改依赖、生成产物和第三方代码，除非完成任务确实必要。
-- 保留仓库现有格式、命名和文档语言；仓库没有明确语言偏好时，沿用 README 的主要语言。
+Operating rules:
+- Investigate the repository fully before editing. Use available symbol search, language services, manifests, and tests. Do not infer behavior from filenames alone.
+- Preserve useful content in existing AGENTS.md, README, and architecture documents. Merge verified information instead of overwriting user documentation without reason.
+- Do not change product behavior, public APIs, persistence formats, or network protocols. A safe oversized-file split may adjust internal structure only when existing tests can demonstrate equivalent behavior.
+- Preserve the repository's existing directory structure. Do not move, rename, merge, or reorganize existing files or directories.
+- The only permitted structural additions are files extracted into the original source file's directory and agent-readable files required by this standard, including AGENTS.md and .agent/repo-map.json.
+- Work directory by directory and process only one source file at a time. Complete that file's split, reference updates, relevant validation, header, and documentation before starting another file.
+- Do not batch refactors across multiple files or directories.
+- Every non-exempt source file must have a fixed agent summary in its first 50 lines so a future agent can decide whether the full file is relevant.
+- List every public or exported symbol in both the source-file header and repository map. Do not duplicate inventories of ordinary private helpers.
+- Write concrete descriptions supported by code. Do not use placeholders such as "handles related logic," "utility methods," or "business module."
+- Do not pass the auditor through broad exclusions, false purposes, empty sections, or meaningless exemptions.
+- Do not modify dependencies, generated outputs, or third-party code unless the task genuinely requires it.
+- Follow the repository's existing formatting, naming, and documentation language. If no documentation language is established, use English.
 
-执行步骤：
+Execution steps:
 
-一、建立事实清单
-- 识别语言、构建系统、包/工作区边界、运行入口、公共 API、主要数据流、外部系统和测试命令。
-- 列出所有源文件，并识别公开/导出的类、函数、接口和常量。
-- 区分生产代码、测试、配置、生成代码、依赖和构建产物。
-- 找到已有文档中的有效架构说明和仓库特有约束。
+1. Build a fact inventory
+- Identify languages, build systems, package or workspace boundaries, runtime entry points, public APIs, primary data flows, external systems, and test commands.
+- List all source files and identify public or exported classes, functions, interfaces, and constants.
+- Separate production code, tests, configuration, generated outputs, dependencies, and build artifacts.
+- Find valid architecture information and repository-specific constraints in existing documentation.
 
-二、创建或完善根目录 AGENTS.md
-如果可以访问本工具目录中的 ROOT_AGENTS_TEMPLATE.md，以它作为结构模板，但必须根据当前仓库的代码事实替换全部占位符，不能原样复制。
+2. Create or improve the root AGENTS.md
+If ROOT_AGENTS_TEMPLATE.md from this toolkit is available, use it as the structural template. Replace every placeholder with facts verified from the current repository; never copy it unchanged.
 
-必须包含非空章节：
-- Purpose：仓库解决的问题及范围。
-- Architecture：模块关系、依赖方向和主要数据流。
-- Entry Points：运行入口、公共 API 入口及推荐阅读起点，使用相对路径。
-- Development：安装、启动和构建命令。
-- Testing：最小相关测试和完整测试命令。
-- Conventions：仓库特有约定、不变量和禁止事项。
+The root guide must contain these non-empty sections:
+- Purpose: the problem the repository solves and its scope.
+- Architecture: module relationships, dependency direction, and primary data flow.
+- Entry Points: runtime entry points, public API entry points, and recommended reading starts, all using relative paths.
+- Development: installation, startup, and build commands.
+- Testing: narrow validation and full test commands.
+- Conventions: repository-specific rules, invariants, and prohibitions.
 
-内容应短而密集，链接到模块 AGENTS.md，而不是复制模块细节。
+Keep the root guide concise and link to module AGENTS.md files instead of duplicating module details.
 
-三、为重要目录创建或完善 AGENTS.md
-重要目录是满足任一条件的非根目录：
-- 直接包含至少 3 个源文件；
-- 名为 src、app、lib、libs、packages、services、modules 或 components，并递归包含至少 5 个源文件；
-- 包含 package.json、pyproject.toml、go.mod、Cargo.toml、pom.xml、*.csproj 等构建清单，且其下存在源文件。
+3. Create or improve significant-directory AGENTS.md files
+A non-root directory is significant when any condition is true:
+- it directly contains at least three source files;
+- it is named src, app, lib, libs, packages, services, modules, or components and recursively contains at least five source files; or
+- it contains package.json, pyproject.toml, go.mod, Cargo.toml, pom.xml, *.csproj, or an equivalent build manifest and has source files below it.
 
-每份目录文档必须包含：
+Every significant-directory guide must contain:
 - Purpose
 - Responsibilities
 - Key Files
 - Dependencies
 - Tests
 
-说明职责边界、关键文件及阅读顺序、上下游关系、关键约束和测试位置。纯分类目录不应复制同一段文字；如确实无需单独文档，在配置中按单个目录给出具体理由。
+Describe responsibility boundaries, key files and reading order, upstream and downstream relationships, important constraints, and test locations. Do not duplicate the same text across purely organizational directories. If a directory genuinely needs no local guide, add one narrowly scoped exemption with a concrete reason.
 
-四、创建 .agent/repo-map.json
-使用以下结构：
+4. Create .agent/repo-map.json
+Use this structure:
 {
   "schemaVersion": 1,
-  "generatedAt": "<带时区的 ISO 8601 时间>",
-  "sourceFingerprint": "<检查器输出的 SHA-256>",
+  "generatedAt": "<timezone-aware ISO 8601 timestamp>",
+  "sourceFingerprint": "<SHA-256 printed by the auditor>",
   "entryPoints": [
-    {"path": "<相对路径>", "purpose": "<具体用途>"}
+    {"path": "<relative path>", "purpose": "<specific purpose>"}
   ],
   "modules": [
-    {"path": "<目录>", "purpose": "<具体职责>", "guide": "<目录/AGENTS.md>"}
+    {"path": "<directory>", "purpose": "<specific responsibility>", "guide": "<directory>/AGENTS.md"}
   ],
   "files": [
     {
-      "path": "<源文件相对路径>",
+      "path": "<source-file relative path>",
       "kind": "source|test|generated|config",
-      "purpose": "<该文件独有的具体职责>",
-      "publicSymbols": ["<公开或导出的符号>"]
+      "purpose": "<the file's unique responsibility>",
+      "publicSymbols": ["<public or exported symbol>"]
     }
   ]
 }
 
-要求：
-- 路径一律使用 /，并相对于仓库根目录。
-- files 覆盖检查器识别的所有未排除源文件。
-- modules 覆盖所有未豁免的重要目录。
-- entryPoints 至少包含一个运行、阅读或公共 API 入口；库项目填写公共导出入口。
-- purpose 至少 8 个非空白字符，且必须能区分相邻文件。
-- publicSymbols 只列公开/导出符号；没有时填写 []。
-- 优先使用语言 AST、符号工具或现有文档生成信息，不要用不可靠的正则猜测复杂语言语义。
+Requirements:
+- Use / in every path and make every path relative to the repository root.
+- files covers every non-excluded source file discovered by the auditor.
+- modules covers every non-exempt significant directory.
+- entryPoints contains at least one runtime, reading, or public API entry. A library should use its public export file.
+- purpose contains at least eight non-whitespace characters and distinguishes adjacent files.
+- publicSymbols contains only public or exported symbols; use [] when none exist.
+- Prefer language ASTs, symbol tools, and existing documentation. Do not guess complex-language semantics with unreliable regular expressions.
 
-五、逐文件增加顶部 agent 摘要
-按目录顺序、一次只处理一个源文件。在该文件前 50 行内使用当前语言的原生注释格式加入：
+5. Add source-file agent headers one file at a time
+Process directories in sequence and handle only one source file at a time. Add this metadata within the file's first 50 lines using the language's native comment syntax:
 
 @agent-file
-@agent-purpose: <至少 8 个非空白字符，准确说明该文件独有职责>
-@agent-public-api: <全部公开或导出符号；没有时写 none>
-@agent-invariants: <重要约束；没有时写 none>
-@agent-side-effects: <I/O、网络、数据库或全局状态副作用；没有时写 none>
+@agent-purpose: <at least eight non-whitespace characters describing this file's unique responsibility>
+@agent-public-api: <every public or exported symbol; use none when empty>
+@agent-invariants: <important constraints; use none when empty>
+@agent-side-effects: <I/O, network, database, or global-state effects; use none when empty>
 
-要求：
-- 五个字段必须按以上顺序出现在不超过 15 行的注释块中。
-- shebang、编码声明或法定版权头可以在摘要之前，但摘要必须完整位于前 50 行。
-- 不得写占位描述，不得省略不适用字段；使用 none 明确表示不适用。
-- 文件职责、公开符号、约束或副作用改变时，同时更新摘要。
-- 完成一个文件的摘要、repo-map 条目和引用核对后，再处理下一个文件。
-- 只有不可直接编辑的生成文件可以使用 exemptions.fileHeaders 豁免。
+Requirements:
+- Keep the five fields in this exact order within a comment block spanning no more than 15 lines.
+- A shebang, encoding declaration, or legally required copyright header may appear before it, but the complete summary must remain within the first 50 lines.
+- Do not write placeholders or omit fields. Use none explicitly when a field does not apply.
+- Update the summary whenever the file's responsibility, public symbols, constraints, or side effects change.
+- Keep @agent-public-api consistent with the file's publicSymbols in repo-map.json.
+- Complete one file's header, repository-map entry, and reference review before processing the next file.
+- Only generated files that cannot be edited directly may use exemptions.fileHeaders.
 
-六、控制文件规模
-- 800 行以内为推荐目标。
-- 801–2000 行会产生警告，应判断是否存在自然且可测试的拆分边界。
-- 超过 2000 行必须安全拆分，或在 .agent-readability.json 的 exemptions.oversizedFiles 中按单文件写明具体原因。
-- 不要为了行数机械切分强耦合代码。任何代码重构后运行最小相关测试。
+6. Control source-file size
+- 800 lines or fewer is the recommended target.
+- 801-2,000 lines produces a warning and requires checking for a natural, testable split boundary.
+- More than 2,000 lines must be split safely or receive a per-file exemptions.oversizedFiles entry with a concrete reason.
+- Do not mechanically divide tightly coupled code merely to reduce line count. Run the narrowest relevant existing validation after any code refactor.
 
-拆分执行顺序：
-1. 选择一个目录，其他目录暂时不修改。
-2. 在当前目录中选择一个超大源文件，其他源文件暂时不拆分。
-3. 只把该文件中的独立职责提取为同目录的新文件，不移动或重命名原有文件和目录。
-4. 修复与该文件直接相关的导入、导出、注册和测试引用。
-5. 运行覆盖该文件的最小现有验证，并更新对应 AGENTS.md 和 repo-map.json。
-6. 确认该文件完整后，再处理当前目录的下一个文件；当前目录完成后，才进入下一个目录。
+Required split sequence:
+1. Select one directory. Do not modify other directories yet.
+2. Select one oversized source file in that directory. Do not split other source files yet.
+3. Extract only independent responsibilities into new files in the original file's directory. Do not move or rename existing files or directories.
+4. Repair imports, exports, registrations, and test references directly related to that file.
+5. Run the narrowest existing validation covering that file, then update its header, the local AGENTS.md, and repo-map.json.
+6. Finish that file before processing the next file in the directory. Finish the directory before entering another directory.
 
-禁止把多个目录或多个源文件的拆分积累成一次大范围改动。
+Never accumulate splits from multiple files or directories into one broad refactor.
 
-七、配置例外
-仅在确实必要时创建 .agent-readability.json。例外格式：
+7. Configure only necessary exemptions
+Create .agent-readability.json only when configuration or exemptions are needed:
 {
   "version": 1,
   "exemptions": {
-    "oversizedFiles": {"path/to/file": "具体原因"},
-    "directoryGuides": {"path/to/directory": "具体原因"},
-    "mapFiles": {"path/to/file": "具体原因"},
-    "fileHeaders": {"path/to/generated-file": "生成来源及无法直接编辑的原因"}
+    "oversizedFiles": {"path/to/file": "specific reason"},
+    "directoryGuides": {"path/to/directory": "specific reason"},
+    "mapFiles": {"path/to/file": "specific reason"},
+    "fileHeaders": {"path/to/generated-file": "generation source and why direct edits are impossible"}
   }
 }
 
-例外必须最小化到具体路径。禁止排除整个 src、app、packages 或等价业务代码根目录。
+Keep every exemption scoped to one specific path. Never exclude an entire src, app, packages, or equivalent business-code root.
 
-八、验证并迭代
-1. 先运行仓库原有的最小相关测试，记录基线；如仅修改文档和 JSON，可跳过无关完整测试。
-2. 运行：
+8. Validate and iterate
+1. Run the repository's narrow relevant tests to establish a baseline. Documentation-only and JSON-only changes do not require unrelated full-suite validation.
+2. Run:
    node "<CHECKER_PATH>" . --fingerprint
-3. 把输出写入 repo-map.json 的 sourceFingerprint，并最后更新 generatedAt。
-4. 运行：
+3. Write the output into repo-map.json as sourceFingerprint and update generatedAt last.
+4. Run:
    node "<CHECKER_PATH>" .
-5. 修复所有 error，并达到默认 85 分以上。不要仅降低 minScore。
-6. 若改动了源代码，运行覆盖改动行为的现有测试、类型检查或构建。
-7. 再运行一次检查器，确保代码地图指纹仍是最新的。
+5. Fix every error and reach at least the default score of 85. Do not lower minScore merely to pass.
+6. If source code changed, run the existing tests, type checks, or build commands that cover the changed behavior.
+7. Run the auditor again and confirm that the repository-map fingerprint is current.
 
-完成前进行语义抽查：
-- 随机抽取至少 3 个 repo-map 文件条目，与源码逐项核对 purpose 和 publicSymbols。
-- 随机抽取至少 3 个文件头，确认 purpose、public API、不变量和副作用与源码一致。
-- 从每个 entry point 跟踪至少一条调用链，确认根文档的架构描述和依赖方向。
-- 确认所有文档命令可从仓库根目录直接执行，或明确标注执行目录。
+Before completion, perform a semantic sample:
+- Compare at least three repo-map file entries with source code and verify purpose and publicSymbols.
+- Compare at least three source-file headers with code and verify purpose, public API, invariants, and side effects.
+- Trace at least one call chain from every entry point and verify the documented architecture and dependency direction.
+- Confirm that every documented command runs from the repository root or clearly states another working directory.
 
-最终回复只需说明：
-- 创建或更新了哪些导航产物；
-- 是否有超大文件、目录文档、代码地图或文件头豁免及其原因；
-- 检查器最终得分；
-- 若改动代码，列出执行过的相关验证。
+The final response should state only:
+- which navigation artifacts were created or updated;
+- whether oversized-file, directory-guide, repository-map, or file-header exemptions remain and why;
+- the auditor's final score; and
+- when source code changed, which relevant validations ran.
 ```
+

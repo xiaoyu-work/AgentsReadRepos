@@ -1,87 +1,111 @@
 # Agent-Friendly Repository Standard v1.0
 
-本标准用于降低 coding agent 理解陌生代码库时的检索量和上下文消耗，同时避免为了“方便 AI”而制造大量容易过期的重复文档。
+This standard reduces the search and context required for a coding agent to
+understand an unfamiliar repository. It avoids large amounts of duplicated
+documentation that are likely to become stale.
 
-配套文件：
+Companion files:
 
-- `CODING_AGENT_PROMPT.md`：可直接交给 coding agent 执行的仓库改造 Prompt。
-- `ROOT_AGENTS_TEMPLATE.md`：可复制到目标仓库根目录的 `AGENTS.md` 示例模板。
-- `check-agent-readability.mjs`：自动检查仓库是否符合本标准。
+- `CODING_AGENT_PROMPT.md`: a complete prompt for migrating a repository.
+- `ROOT_AGENTS_TEMPLATE.md`: a template to copy into a target repository as
+  its root `AGENTS.md`.
+- `check-agent-readability.mjs`: an automated conformance auditor.
 
-## 1. 设计原则
+## 1. Design Principles
 
-1. **先解释边界，再罗列细节**：模块职责、入口、数据流和约束比逐个解释私有方法更有价值。
-2. **文档必须靠近代码**：仓库级信息放在根目录，模块级信息放在模块目录。
-3. **可推导的信息应自动生成**：文件列表和公开符号放入代码地图，不在文件头人工复制。
-4. **代码是事实来源**：文档不得猜测行为；无法确认的内容应明确标记为待确认。
-5. **不为通过检查而做危险重构**：缺少测试保护时，超大文件可以使用有理由的临时豁免。
-6. **描述必须有导航价值**：禁止使用“工具类”“处理业务逻辑”“相关功能”等无信息占位文本。
-7. **先读文件头，再决定是否读全文**：每个源文件都必须在前 50 行提供固定格式的 agent 摘要，使 agent 能先排除无关文件。
+1. **Explain boundaries before details.** Module responsibilities, entry
+   points, data flow, and invariants are more useful than inventories of
+   private helpers.
+2. **Keep documentation close to code.** Repository-level information belongs
+   at the root; module-level information belongs in the module directory.
+3. **Generate derivable information.** File indexes and public symbols belong
+   in the repository map and should be produced from code facts.
+4. **Treat code as the source of truth.** Documentation must not guess about
+   behavior. Mark facts that cannot be verified as unresolved.
+5. **Do not perform risky refactors merely to pass an audit.** A large legacy
+   or generated file may use a narrow, justified exemption when safe
+   restructuring is not currently possible.
+6. **Write descriptions that improve navigation.** Do not use placeholders
+   such as "utility code," "business logic," or "handles related operations."
+7. **Read file headers before file bodies.** Every source file must expose a
+   fixed agent summary in its first 50 lines so an agent can reject irrelevant
+   files without reading them in full.
 
-## 2. 必需的仓库结构
+## 2. Required Repository Structure
 
-符合标准的代码仓库至少包含：
+A conforming code repository contains at least:
 
 ```text
 repository/
-├── AGENTS.md
-├── .agent/
-│   └── repo-map.json
-├── .agent-readability.json       # 可选
-├── src/
-│   ├── AGENTS.md                 # 当 src 被判定为重要目录时必需
-│   └── ...
-└── ...
+|-- AGENTS.md
+|-- .agent/
+|   `-- repo-map.json
+|-- .agent-readability.json       # Optional
+|-- src/
+|   |-- AGENTS.md                 # Required when src is significant
+|   `-- ...
+`-- ...
 ```
 
-### 2.1 根目录 `AGENTS.md`
+### 2.1 Root `AGENTS.md`
 
-根目录必须存在 `AGENTS.md`，并包含以下非空章节。标题可以使用表中任一中英文名称。
+The repository root must contain `AGENTS.md` with the following non-empty
+sections:
 
-| 规范名称 | 可接受标题 | 应回答的问题 |
+| Canonical section | Accepted headings | Required information |
 |---|---|---|
-| Purpose | `Purpose`、`目标`、`用途` | 仓库解决什么问题，不解决什么问题？ |
-| Architecture | `Architecture`、`架构`、`系统设计` | 主要模块如何连接，依赖方向是什么？ |
-| Entry Points | `Entry Points`、`入口`、`入口点` | 从哪里开始读、运行或调用？ |
-| Development | `Development`、`开发`、`本地开发` | 如何安装依赖、启动和构建？ |
-| Testing | `Testing`、`测试` | 最小测试命令和完整测试命令是什么？ |
-| Conventions | `Conventions`、`约定`、`编码约定` | 仓库特有的规则和不变量是什么？ |
+| Purpose | `Purpose`, `Goal` | What problem does the repository solve, and what is outside its scope? |
+| Architecture | `Architecture`, `System Design` | How do the main modules connect, and what is the dependency direction? |
+| Entry Points | `Entry Points`, `Entry Point` | Where should an agent begin reading, running, or calling the system? |
+| Development | `Development`, `Local Development` | How are dependencies installed and the project built or started? |
+| Testing | `Testing`, `Tests` | What are the narrow and complete validation commands? |
+| Conventions | `Conventions`, `Coding Conventions` | What repository-specific rules and invariants must be preserved? |
 
-`AGENTS.md` 应尽量简洁，并通过相对路径链接到具体模块文档。它不是产品 README 的替代品。
+Keep the root guide concise and link to module guides through relative paths.
+It does not replace the product README.
 
-可以复制 `ROOT_AGENTS_TEMPLATE.md` 到目标仓库根目录并重命名为
-`AGENTS.md`。提交前必须用真实仓库信息替换所有 `{{...}}` 占位符。
+Copy `ROOT_AGENTS_TEMPLATE.md` into the target repository as `AGENTS.md` when a
+starting template is useful. Replace every `{{...}}` placeholder with verified
+repository facts before committing it.
 
-### 2.2 重要目录的 `AGENTS.md`
+### 2.2 Significant-Directory `AGENTS.md`
 
-检查器会把满足任一条件的非根目录视为“重要目录”：
+The auditor considers a non-root directory significant when any of these
+conditions is true:
 
-- 目录内直接包含至少 3 个源文件；
-- 名为 `src`、`app`、`lib`、`libs`、`packages`、`services`、`modules` 或 `components`，并递归包含至少 5 个源文件；
-- 包含常见构建清单，例如 `package.json`、`pyproject.toml`、`go.mod`、`Cargo.toml`、`pom.xml` 或 `*.csproj`，且其下存在源文件。
+- it directly contains at least three source files;
+- it is named `src`, `app`, `lib`, `libs`, `packages`, `services`, `modules`,
+  or `components` and recursively contains at least five source files; or
+- it contains a common build manifest such as `package.json`,
+  `pyproject.toml`, `go.mod`, `Cargo.toml`, `pom.xml`, or `*.csproj`, and has
+  source files below it.
 
-每个重要目录必须包含 `AGENTS.md`，并包含以下非空章节：
+Every significant directory must contain `AGENTS.md` with these non-empty
+sections:
 
-- `Purpose` / `目标` / `用途`
-- `Responsibilities` / `职责`
-- `Key Files` / `关键文件`
-- `Dependencies` / `依赖`
-- `Tests` / `测试`
+- `Purpose`
+- `Responsibilities`
+- `Key Files`
+- `Dependencies`
+- `Tests`
 
-建议写明：
+The guide should state:
 
-- 本目录负责和不负责的内容；
-- 推荐阅读顺序；
-- 上游调用方和下游依赖；
-- 状态、数据或请求如何流过本模块；
-- 不容易从类型和函数名看出的约束；
-- 对应测试目录及测试命令。
+- what the directory owns and does not own;
+- the recommended reading order;
+- upstream callers and downstream dependencies;
+- how state, data, or requests move through the module;
+- constraints that are not obvious from types and names; and
+- associated test locations and commands.
 
-不要在每层纯粹用于分类的目录中机械复制相同文档。确实不适合放置目录文档时，应使用带理由的豁免。
+Do not mechanically copy the same guide into pure organizational directories.
+Use a narrow, justified exemption when a directory genuinely does not need its
+own guide.
 
 ### 2.3 `.agent/repo-map.json`
 
-代码地图必须是 UTF-8 JSON，使用 `/` 分隔的仓库相对路径。基本结构如下：
+The repository map must be UTF-8 JSON and use `/` in repository-relative paths.
+Its basic structure is:
 
 ```json
 {
@@ -91,13 +115,13 @@ repository/
   "entryPoints": [
     {
       "path": "src/main.py",
-      "purpose": "启动命令行应用并组装顶层依赖"
+      "purpose": "Starts the command-line application and assembles top-level dependencies"
     }
   ],
   "modules": [
     {
       "path": "src/orders",
-      "purpose": "实现订单创建、状态转换和持久化编排",
+      "purpose": "Implements order creation, state transitions, and persistence orchestration",
       "guide": "src/orders/AGENTS.md"
     }
   ],
@@ -105,7 +129,7 @@ repository/
     {
       "path": "src/orders/service.py",
       "kind": "source",
-      "purpose": "编排订单创建和支付预留，并维护幂等性边界",
+      "purpose": "Coordinates order creation and payment reservation while preserving idempotency",
       "publicSymbols": [
         "OrderService",
         "create_order"
@@ -115,48 +139,58 @@ repository/
 }
 ```
 
-字段规则：
+Field requirements:
 
-- `schemaVersion`：当前固定为整数 `1`。
-- `generatedAt`：带时区的 ISO 8601 时间。
-- `sourceFingerprint`：由检查器计算的源文件指纹。
-- `entryPoints`：至少一个阅读、运行或公共 API 入口；库项目可以填写导出公共 API 的文件。
-- `modules`：覆盖所有未豁免的重要目录。
-- `files`：覆盖所有未排除的源文件。
-- `purpose`：至少 8 个非空白字符，并描述文件或模块的具体职责。
-- `publicSymbols`：公开或导出的类、函数、接口和常量；没有时使用空数组。不要罗列私有实现细节。
-- `kind`：建议使用 `source`、`test`、`generated` 或 `config`。
+- `schemaVersion`: the integer `1`.
+- `generatedAt`: an ISO 8601 timestamp with a timezone.
+- `sourceFingerprint`: the fingerprint calculated by the auditor.
+- `entryPoints`: at least one runtime, reading, or public API entry point. A
+  library can use its public export file.
+- `modules`: every non-exempt significant directory.
+- `files`: every non-excluded source file.
+- `purpose`: at least eight non-whitespace characters and a concrete,
+  file-specific or module-specific responsibility.
+- `publicSymbols`: all public or exported classes, functions, interfaces, and
+  constants. Use an empty array when none exist.
+- `kind`: normally `source`, `test`, `generated`, or `config`.
 
-检查器按以下方式生成指纹：
+The auditor calculates `sourceFingerprint` as follows:
 
-1. 按仓库相对路径排序源文件；
-2. 将路径转换为 `/`；
-3. 将文件内容的 `CRLF` 和 `CR` 统一为 `LF`；
-4. 对每个文件依次写入 `UTF-8 路径 + NUL + 内容 + NUL`；
-5. 计算整体 SHA-256。
+1. Sort source files by repository-relative path.
+2. Normalize path separators to `/`.
+3. Normalize `CRLF` and `CR` content to `LF`.
+4. For each file, hash `UTF-8 path + NUL + content + NUL`.
+5. Produce a SHA-256 digest over the full sequence.
 
-运行以下命令可以直接得到正确指纹：
+Print the current fingerprint with:
 
 ```console
 node check-agent-readability.mjs PATH_TO_REPOSITORY --fingerprint
 ```
 
-代码地图应由脚本、AST/语言工具或 agent 从代码事实生成。代码变更后必须刷新，检查器会拒绝过期指纹。
+The repository map should be generated from code facts through language tools,
+AST inspection, or a coding agent. Refresh it after source changes; the auditor
+rejects stale fingerprints.
 
-## 3. 源文件规模
+## 3. Source-File Size
 
-默认阈值：
+Default thresholds:
 
-- **建议上限：800 行**。超过后产生警告并扣分。
-- **硬上限：2000 行**。超过后检查失败。
+- **Recommended maximum: 800 lines.** Larger files produce a warning and lose
+  points.
+- **Hard maximum: 2,000 lines.** Larger files fail the audit.
 
-行数只是复杂度信号，不是重构目标。拆分文件时应按稳定职责、依赖方向和可测试边界拆分，不能为了满足数字而把强耦合逻辑切成任意片段。
+Line count is a complexity signal, not a refactoring target. Split files along
+stable responsibilities, dependency directions, and testable boundaries. Do
+not divide tightly coupled logic into arbitrary fragments merely to satisfy a
+number.
 
-生成代码、协议产物或暂时无法安全拆分的遗留文件可以豁免，但理由必须具体。
+Generated outputs, protocol artifacts, and legacy files that cannot currently
+be split safely may use a specific exemption with a concrete reason.
 
-## 4. 可选配置
+## 4. Optional Configuration
 
-仓库根目录可以创建 `.agent-readability.json`：
+A repository may create `.agent-readability.json` at its root:
 
 ```json
 {
@@ -175,49 +209,50 @@ node check-agent-readability.mjs PATH_TO_REPOSITORY --fingerprint
   "minScore": 85,
   "exemptions": {
     "oversizedFiles": {
-      "src/legacy/parser.py": "Generated grammar output; source grammar is parser.y"
+      "src/legacy/parser.py": "Generated grammar output; the maintained source is parser.y"
     },
     "directoryGuides": {
       "src/compat": "Two-file compatibility shim documented by src/AGENTS.md"
     },
     "mapFiles": {
-      "tests/fixtures/huge_generated.py": "Generated test fixture with no maintainable public API"
+      "tests/fixtures/huge_generated.py": "Generated fixture with no maintainable public API"
     },
     "fileHeaders": {
-      "src/generated/schema.ts": "Generated from schema.json; edits would be overwritten"
+      "src/generated/schema.ts": "Generated from schema.json; direct edits are overwritten"
     }
   }
 }
 ```
 
-配置约束：
+Configuration requirements:
 
-- 路径均为使用 `/` 的仓库相对路径；
-- 排除项使用 glob；
-- 每项豁免必须包含非空理由；
-- `recommendedMaxLines` 不得大于 `hardMaxLines`；
-- 不允许用根级通配符排除大部分业务代码来伪造通过结果。
+- all exemption paths use `/` and are relative to the repository root;
+- exclusion entries use glob syntax;
+- every exemption has a non-empty reason;
+- `recommendedMaxLines` is not greater than `hardMaxLines`; and
+- broad patterns must not hide most business source code.
 
-默认忽略 `.git`、依赖、构建产物、缓存、IDE 目录和常见生成文件。
+The auditor ignores common dependency, build, cache, IDE, version-control, and
+generated-code directories by default.
 
-## 5. 评分与通过条件
+## 5. Scoring and Passing
 
-总分为 100：
+The total score is 100:
 
-| 类别 | 分值 |
+| Category | Points |
 |---|---:|
-| 根目录 `AGENTS.md` | 25 |
-| 重要目录文档 | 20 |
+| Root `AGENTS.md` | 25 |
+| Significant-directory guides | 20 |
 | `.agent/repo-map.json` | 25 |
-| 源文件顶部 agent 摘要 | 20 |
-| 源文件规模 | 10 |
+| Source-file agent headers | 20 |
+| Source-file size | 10 |
 
-仓库必须同时满足：
+A repository passes only when:
 
-1. 分数达到 `minScore`，默认 85；
-2. 不存在 `error` 级问题。
+1. it reaches `minScore`, which defaults to 85; and
+2. it has no `error` findings.
 
-运行方法：
+Commands:
 
 ```console
 node check-agent-readability.mjs PATH_TO_REPOSITORY
@@ -225,25 +260,26 @@ node check-agent-readability.mjs PATH_TO_REPOSITORY --format json
 node check-agent-readability.mjs PATH_TO_REPOSITORY --min-score 90
 ```
 
-退出码：
+Exit codes:
 
-- `0`：通过；
-- `1`：仓库不符合标准；
-- `2`：路径、配置或检查器调用错误。
+- `0`: pass;
+- `1`: repository does not meet the standard;
+- `2`: invalid path, configuration, or invocation.
 
-## 6. 文件头规则
+## 6. Source-File Agent Headers
 
-每个未豁免源文件都必须在**前 50 行**包含一个 5–15 行的语言原生注释块。固定字段和顺序如下：
+Every non-exempt source file must contain a 5-15 line native-language comment
+block within its **first 50 lines**. The fields and order are fixed:
 
 ```text
 @agent-file
-@agent-purpose: <该文件独有的具体职责>
-@agent-public-api: <公开或导出的类、函数、接口和常量；没有时写 none>
-@agent-invariants: <调用方和修改者必须保持的约束；没有时写 none>
-@agent-side-effects: <I/O、网络、数据库、全局状态等副作用；没有时写 none>
+@agent-purpose: <the file's specific responsibility>
+@agent-public-api: <public or exported classes, functions, interfaces, and constants; use none when empty>
+@agent-invariants: <constraints callers and maintainers must preserve; use none when empty>
+@agent-side-effects: <I/O, network, database, or global-state effects; use none when empty>
 ```
 
-JavaScript / TypeScript 示例：
+JavaScript or TypeScript example:
 
 ```ts
 /**
@@ -255,7 +291,7 @@ JavaScript / TypeScript 示例：
  */
 ```
 
-Python 示例：
+Python example:
 
 ```python
 """
@@ -267,23 +303,38 @@ Python 示例：
 """
 ```
 
-要求：
+Requirements:
 
-- `@agent-purpose` 至少包含 8 个非空白字符，并能区分相邻文件；
-- `@agent-public-api` 列出全部公开或导出符号，不罗列普通私有辅助方法；
-- 没有不变量、副作用或公开符号时必须明确写 `none`，不能留空；
-- 代码发生职责、公开符号、约束或副作用变化时，同一改动必须更新文件头；
-- `@agent-public-api` 必须与 `repo-map.json` 的 `publicSymbols` 保持一致；
-- shebang、编码声明和法定版权头可以位于它之前，但整个摘要必须出现在前 50 行；
-- 只有不可直接编辑的生成文件可以通过 `exemptions.fileHeaders` 按文件豁免。
+- `@agent-purpose` contains at least eight non-whitespace characters and
+  distinguishes the file from adjacent files.
+- `@agent-public-api` lists every public or exported symbol but does not list
+  ordinary private helpers.
+- Empty public APIs, invariants, or side effects are written explicitly as
+  `none`; fields are never left blank.
+- Changes to responsibility, public symbols, constraints, or side effects
+  update the header in the same change.
+- `@agent-public-api` stays consistent with the matching `publicSymbols` entry
+  in `repo-map.json`.
+- A shebang, encoding declaration, or legally required copyright header may
+  appear before the block, but the complete summary remains within the first
+  50 lines.
+- Only generated files that cannot be edited directly may use a per-file
+  `exemptions.fileHeaders` entry.
 
-这个摘要用于判断“是否需要读取全文”。Agent 应先读取根文档、代码地图和候选文件前 50 行，只有确认文件与任务相关后才读取其余内容。
+This summary determines whether a full file read is necessary. An agent should
+read the root guide, repository map, and first 50 lines of candidate files,
+then read complete files only when their summaries show relevance.
 
-## 7. 自动检查的边界
+## 7. Limits of Automated Auditing
 
-检查器可以验证文档结构、文件头字段、覆盖率、路径、文件规模和代码地图新鲜度，但无法证明描述在语义上完全正确。最终验收还应抽查：
+The auditor verifies document structure, header fields, path and map coverage,
+file size, and repository-map freshness. It cannot prove that natural-language
+descriptions are semantically correct. Final review should also:
 
-1. 随机选择 3–5 个文件，对照代码验证 `purpose`；
-2. 从每个入口追踪一条真实调用链，验证架构和依赖方向；
-3. 用根文档中的命令执行构建和测试；
-4. 确认一个新 agent 仅阅读根文档、代码地图和候选文件前 50 行后，能定位主要功能、入口和测试。
+1. sample three to five files and compare each `purpose` with the code;
+2. trace one real call chain from every entry point to verify architecture and
+   dependency direction;
+3. run the build and test commands documented in the root guide; and
+4. confirm that a new agent can locate major functionality, entry points, and
+   tests by reading the root guide, repository map, and candidate-file headers.
+

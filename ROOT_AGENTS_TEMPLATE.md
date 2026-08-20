@@ -8,15 +8,15 @@ Delete this comment before committing. Never leave placeholder content behind.
 
 ## Purpose
 
-{{用 2–5 句话说明仓库解决的问题、主要用户或调用方，以及明确不属于本仓库职责的内容。}}
+{{In 2-5 sentences, explain the problem this repository solves, its primary users or callers, and what is explicitly outside its scope.}}
 
 ## Architecture
 
-{{简要说明主要组件、依赖方向和最重要的数据流。不要复制实现细节。}}
+{{Briefly describe the major components, dependency direction, and most important data flow. Do not duplicate implementation details.}}
 
 | Module | Responsibility | Guide |
 |---|---|---|
-| `{{relative/module/path}}` | {{该模块独有的职责}} | `{{relative/module/path}}/AGENTS.md` |
+| `{{relative/module/path}}` | {{This module's unique responsibility}} | `{{relative/module/path}}/AGENTS.md` |
 
 Primary dependency flow:
 
@@ -26,16 +26,16 @@ Primary dependency flow:
 
 Key architectural constraints:
 
-- {{必须保持的模块边界或依赖方向}}
-- {{事务、并发、缓存、幂等或安全约束；没有时写明不适用}}
+- {{Module boundary or dependency direction that must be preserved}}
+- {{Transaction, concurrency, caching, idempotency, or security constraint; state "not applicable" when none exists}}
 
 ## Entry Points
 
 | Path | Start here when |
 |---|---|
-| `{{relative/path/to/runtime-entry}}` | {{运行应用或跟踪主要请求流程}} |
-| `{{relative/path/to/public-api}}` | {{理解库的公共 API 或主要导出}} |
-| `{{relative/path/to/config}}` | {{理解启动配置、依赖组装或路由注册}} |
+| `{{relative/path/to/runtime-entry}}` | {{Running the application or tracing its primary request flow}} |
+| `{{relative/path/to/public-api}}` | {{Understanding the library's public API or primary exports}} |
+| `{{relative/path/to/config}}` | {{Understanding startup configuration, dependency assembly, or route registration}} |
 
 For file-level navigation, read `.agent/repo-map.json` first, then confirm every
 description against the source before making changes.
@@ -44,7 +44,7 @@ description against the source before making changes.
 
 Prerequisites:
 
-- {{运行时、工具链及最低版本}}
+- {{Runtime, toolchain, and minimum supported versions}}
 
 Run these commands from the repository root unless noted otherwise:
 
@@ -55,7 +55,7 @@ Run these commands from the repository root unless noted otherwise:
 
 Required local services or environment variables:
 
-- `{{NAME}}`: {{用途；不要在本文档中写入密钥值}}
+- `{{NAME}}`: {{Purpose; never include a secret value in this document}}
 
 ## Testing
 
@@ -70,13 +70,13 @@ the result indicates broader validation is needed.
 
 Test locations:
 
-- `{{relative/test/path}}`: {{覆盖的模块或测试类型}}
+- `{{relative/test/path}}`: {{Covered module or test type}}
 
 ## Conventions
 
-- {{仓库特有的命名、错误处理或类型安全规则}}
-- {{生成文件和生成命令；没有时写明不适用}}
-- {{禁止直接修改的目录、API 或数据格式}}
+- {{Repository-specific naming, error-handling, or type-safety rule}}
+- {{Generated files and their generation command; state "not applicable" when none exist}}
+- {{Directory, API, or data format that must not be modified directly}}
 - Source code is the source of truth when documentation and implementation differ.
 - Do not add dependencies or change public behavior unless the task requires it.
 

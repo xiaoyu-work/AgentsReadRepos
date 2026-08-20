@@ -127,20 +127,20 @@ const MANIFEST_NAMES = new Set([
 ]);
 
 const ROOT_SECTIONS = {
-  Purpose: ["purpose", "goal", "目标", "用途", "项目目的"],
-  Architecture: ["architecture", "system design", "架构", "系统设计"],
-  "Entry Points": ["entry points", "entry point", "入口", "入口点"],
-  Development: ["development", "local development", "开发", "本地开发"],
-  Testing: ["testing", "tests", "测试"],
-  Conventions: ["conventions", "coding conventions", "约定", "编码约定"],
+  Purpose: ["purpose", "goal"],
+  Architecture: ["architecture", "system design"],
+  "Entry Points": ["entry points", "entry point"],
+  Development: ["development", "local development"],
+  Testing: ["testing", "tests"],
+  Conventions: ["conventions", "coding conventions"],
 };
 
 const DIRECTORY_SECTIONS = {
-  Purpose: ["purpose", "goal", "目标", "用途"],
-  Responsibilities: ["responsibilities", "responsibility", "职责"],
-  "Key Files": ["key files", "important files", "关键文件", "重要文件"],
-  Dependencies: ["dependencies", "dependency", "依赖"],
-  Tests: ["tests", "testing", "测试"],
+  Purpose: ["purpose", "goal"],
+  Responsibilities: ["responsibilities", "responsibility"],
+  "Key Files": ["key files", "important files"],
+  Dependencies: ["dependencies", "dependency"],
+  Tests: ["tests", "testing"],
 };
 
 const BROAD_EXCLUDES = new Set([
