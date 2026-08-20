@@ -1,39 +1,62 @@
-# Agent-Readable Repository Toolkit
+# Agent-Readable Repository MCP
 
 ## Why
 
 Coding agents waste context discovering architecture and deciding which files
-matter. This toolkit separates:
-
-- working instructions in `AGENTS.md`;
-- system design in `ARCHITECTURE.md`;
-- meaningful module-directory facts in `MODULE.md`;
-- machine-readable navigation in `.agent/repo-map.json`; and
-- file facts in the first 50 lines of each source file.
-
-Agents can narrow their search before reading complete files.
+matter. This MCP server gives an agent the migration rules, one migration task
+at a time, automatic repository-map generation, and final conformance auditing.
+Users do not need to copy `CODING_AGENT_PROMPT.md`.
 
 ## How to Use
 
-1. Open `CODING_AGENT_PROMPT.md`.
-2. Replace `<CHECKER_PATH>` with the absolute path to
-   `check-agent-readability.mjs`.
-3. Give the complete prompt to a coding agent running from the target
-   repository root.
+Install dependencies with Node.js 20 or later:
 
-Use `ROOT_AGENTS_TEMPLATE.md` as an optional starting point for the target
-repository's root `AGENTS.md`.
+```console
+npm install
+```
+
+Register this stdio server in an MCP client:
+
+```json
+{
+  "mcpServers": {
+    "agent-readable-repository": {
+      "command": "node",
+      "args": [
+        "C:\\absolute\\path\\to\\mcp-server.mjs",
+        "--root",
+        "C:\\path\\to\\target-repository"
+      ]
+    }
+  }
+}
+```
+
+Then tell the connected coding agent:
+
+```text
+Make this repository agent-readable.
+```
+
+The agent should call `start_migration`, repeatedly call
+`next_migration_task`, call `generate_repository_map` when instructed, return
+to `next_migration_task`, and call `audit_repository` once for the final report.
+`CODING_AGENT_PROMPT.md` remains available as an MCP Prompt and as a fallback
+for clients without MCP support.
 
 ## How to Validate
 
-Node.js 18 or later is required; no npm packages are needed.
+Inspect the MCP server interactively:
+
+```console
+npx @modelcontextprotocol/inspector node mcp-server.mjs --root PATH_TO_REPOSITORY
+```
+
+The standalone auditor is also available:
 
 ```console
 node check-agent-readability.mjs PATH_TO_REPOSITORY --generate-map
 node check-agent-readability.mjs PATH_TO_REPOSITORY
-node check-agent-readability.mjs PATH_TO_REPOSITORY --format json
 ```
 
-A repository passes with at least 85 points and no `error` findings. Exit code
-`0` means pass, `1` means non-conforming, and `2` means invalid invocation or
-configuration.
+A repository passes with at least 85 points and no `error` findings.

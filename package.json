@@ -1,0 +1,22 @@
+{
+  "name": "agent-readable-repository-mcp",
+  "version": "1.0.0",
+  "description": "MCP server and auditor for migrating repositories into an agent-readable structure.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "agent-readable-mcp": "./mcp-server.mjs",
+    "agent-readability-audit": "./check-agent-readability.mjs"
+  },
+  "scripts": {
+    "mcp": "node mcp-server.mjs",
+    "audit": "node check-agent-readability.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.4.3"
+  }
+}
